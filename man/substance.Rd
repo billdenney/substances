@@ -7,7 +7,7 @@
 \usage{
 substance(
   x = double(),
-  unit = units::unitless(),
+  unit = units::unitless,
   substance = NA_character_,
   system = NULL
 )
@@ -15,7 +15,7 @@ substance(
 new_substance(
   value = double(),
   substance_id = character(),
-  unit_sym = units::unitless(),
+  unit_sym = units::unitless,
   system_name = substance_default_system()
 )
 }

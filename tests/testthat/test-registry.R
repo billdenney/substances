@@ -83,13 +83,48 @@ test_that("the default system can be changed and restored", {
   expect_true(is.na(substance_resolve("sodium")))
 })
 
-test_that("the extra unit symbols are installed and behave as intended", {
-  expect_true(unit_is_defined("U"))
-  expect_true(unit_is_defined("IU"))
-  expect_true(unit_is_defined("eq"))
-  # U is umol/min, which makes enzyme activity purely dimensional
-  expect_equal(as.numeric(units::set_units(units::set_units(1, "U/L"), "nkat/L")),
-               16.6667, tolerance = 1e-4)
-  # IU is a separate dimension: it is not the enzyme unit
-  expect_false(units::ud_are_convertible("IU", "U"))
+test_that("printing a system reports its table sizes", {
+  out <- capture.output(print(get_system("substances")))
+  expect_match(out[1], "substance_system 'substances'", fixed = TRUE)
+  expect_match(paste(out, collapse = "\n"), "substances:", fixed = TRUE)
+  expect_match(paste(out, collapse = "\n"), "sources:", fixed = TRUE)
+})
+
+test_that("substance_info() prints parameters with their citations", {
+  out <- paste(capture.output(print(substance_info("glucose"))), collapse = "\n")
+  expect_match(out, "glucose", fixed = TRUE)
+  expect_match(out, "C6H12O6", fixed = TRUE)      # formula line
+  expect_match(out, "molar_mass", fixed = TRUE)
+  expect_match(out, "CIAAW", fixed = TRUE)        # the citation
+})
+
+test_that("substance_info() prints explicit conversions", {
+  out <- paste(capture.output(print(substance_info("HbA1c"))), collapse = "\n")
+  expect_match(out, "conversions:", fixed = TRUE)
+  expect_match(out, "affine", fixed = TRUE)
+  expect_match(out, "NGSP", fixed = TRUE)
+})
+
+test_that("substance_info() prints a substance with no formula", {
+  out <- paste(capture.output(print(substance_info("insulin"))), collapse = "\n")
+  expect_match(out, "activity", fixed = TRUE)
+  expect_false(grepl("formula:", out, fixed = TRUE))
+})
+
+test_that("substance_systems() lists what has been registered", {
+  substance_system("listed_system",
+                   substances = data.frame(substance_id = "x", name = "X"))
+  expect_true("listed_system" %in% substance_systems())
+  expect_true("substances" %in% substance_systems())
+})
+
+test_that("a system object can be passed instead of its name", {
+  sys_obj <- get_system("substances")
+  expect_identical(get_system(sys_obj), sys_obj)
+  expect_equal(substance_resolve("glucose", system = sys_obj), "glucose")
+})
+
+test_that("setting an unknown default system is refused", {
+  expect_error(substance_set_default_system("nope"),
+               "no conversion system named", fixed = TRUE)
 })

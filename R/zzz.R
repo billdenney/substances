@@ -39,6 +39,10 @@ install_extra_units <- function() {
   installed
 }
 
+# nocov start
+# Load hooks run before the coverage tracer is attached and after it detaches,
+# so they cannot be exercised from the test suite. install_extra_units() and
+# unit_is_defined() carry the logic and are tested directly.
 .onLoad <- function(libname, pkgname) {
   # udunits is global process state, so record what we added and only remove
   # those on unload -- never a symbol the user or another package defined.
@@ -51,7 +55,9 @@ install_extra_units <- function() {
 }
 
 .onUnload <- function(libpath) {
-  for (sym in get0("installed_units", envir = substances_env, ifnotfound = character(0)))
+  for (sym in get0("installed_units", envir = substances_env,
+                   ifnotfound = character(0)))
     try(units::remove_unit(sym), silent = TRUE)
   invisible(NULL)
 }
+# nocov end

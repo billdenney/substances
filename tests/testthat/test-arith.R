@@ -151,3 +151,40 @@ test_that("arithmetic across systems is refused", {
   z <- substance(1, "mmol/L", "glucose", system = "arith_iso")
   expect_error(x + z, "different systems", fixed = TRUE)
 })
+
+test_that("exponentiation is refused, because the parameters would not follow", {
+  x <- substance(2, "mmol/L", "glucose")
+  expect_error(x^2, "cannot raise a `substance` to a power", fixed = TRUE)
+})
+
+test_that("unary plus returns the vector unchanged", {
+  x <- substance(c(1, -2), "mmol/L", "glucose")
+  expect_equal(as.numeric(+x), c(1, -2))
+  expect_equal(substance_of(+x), c("glucose", "glucose"))
+})
+
+test_that("undefined operator combinations are refused", {
+  x <- substance(2, "mmol/L", "glucose")
+  # comparison goes through vec_compare(), so it fails at the type stage
+  expect_error(x > 1, class = "vctrs_error_incompatible_type")
+  expect_error(1 - x, "cannot use `-` on a bare number", fixed = TRUE)
+  expect_error(!x, class = "vctrs_error_incompatible_op")
+})
+
+test_that("dividing different substances is refused", {
+  x <- substance(1, "mmol/L", "glucose")
+  y <- substance(1, "mmol/L", "sodium")
+  expect_error(x / y, "different substances", fixed = TRUE)
+})
+
+test_that("subtraction converts the right-hand side too", {
+  x <- substance(2, "mmol/L", "glucose")
+  y <- substance(18.0156, "mg/dL", "glucose")   # = 1 mmol/L
+  expect_equal(as.numeric(x - y), 1, tolerance = 1e-4)
+})
+
+test_that("addition reports a unit that cannot be reconciled", {
+  x <- substance(1, "mmol/L", "hba1c")
+  y <- substance(1, "mg/dL", "hba1c")
+  expect_error(x + y, "cannot use `+` on", fixed = TRUE)
+})

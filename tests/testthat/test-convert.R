@@ -103,23 +103,96 @@ test_that("published clinical factors are reproduced from the registry", {
   }
 })
 
-test_that("mixed_substances converts a long-format column in one call", {
-  m <- mixed_substances(c(100, 5.5, 140),
-                        c("mg/dL", "mmol/L", "mg/dL"),
-                        c("glucose", "glucose", "sodium"))
-  y <- set_units(m, "mmol/L")
-  expect_s3_class(y, "substance")
-  expect_equal(as.numeric(y), c(5.5507, 5.5, 60.897), tolerance = 1e-4)
-  expect_equal(substance_of(y), c("glucose", "glucose", "sodium"))
-})
-
-test_that("mixed_substances rejects unit strings udunits does not know", {
-  expect_error(mixed_substances(1, "frac of 1", "glucose"),
-               "not recognised by udunits", fixed = TRUE)
-})
-
 test_that("ambiguous bridges error rather than picking one", {
   params <- list(molar_mass = units::set_units(180, "g/mol"),
                  bogus = units::set_units(999, "g/mol"))
   expect_error(bridge_factor("mg/dL", "mmol/L", params), "ambiguous")
+})
+
+test_that("`units<-` converts in place, like set_units()", {
+  x <- substance(100, "mg/dL", "glucose")
+  units(x) <- "mmol/L"
+  expect_equal(as.numeric(x), 5.5507, tolerance = 1e-4)
+  expect_equal(unit_label(x), "mmol/L")
+})
+
+test_that("set_units() with no unit means unitless, as in units", {
+  # dropping a real dimension is refused, exactly as units::set_units() does
+  expect_error(set_units(substance(1, "mg/dL", "glucose")),
+               "cannot convert mg/dL to 1", fixed = TRUE)
+  # but an already-unitless quantity is unchanged
+  x <- substance(1, units::unitless, "glucose")
+  expect_equal(unit_label(set_units(x)), "1")
+  expect_equal(as.numeric(set_units(x)), 1)
+})
+
+test_that("converting to the same unit is a no-op", {
+  x <- substance(100, "mg/dL", "glucose")
+  expect_equal(as.numeric(set_units(x, "mg/dL")), 100)
+  expect_true(substance_convertible("mg/dL", "mg/dL", "glucose"))
+})
+
+test_that("a conversion marked other than ok is refused with its note", {
+  substance_system("disputed_sys",
+    substances = data.frame(substance_id = "x", name = "X"),
+    conversions = data.frame(substance_id = "x", from_unit = "mg/dL",
+                             to_unit = "nmol/L", kind = "factor", slope = 2,
+                             intercept = NA, status = "disputed",
+                             source_id = NA, note = "isoform size varies"))
+  x <- substance(1, "mg/dL", "x", system = "disputed_sys")
+  expect_error(set_units(x, "nmol/L"), "is marked \"disputed\"", fixed = TRUE)
+  expect_error(set_units(x, "nmol/L"), "isoform size varies", fixed = TRUE)
+})
+
+test_that("an unsupported conversion kind is an error, not a silent skip", {
+  substance_system("badkind_sys",
+    substances = data.frame(substance_id = "x", name = "X"),
+    conversions = data.frame(substance_id = "x", from_unit = "mg/dL",
+                             to_unit = "nmol/L", kind = "spline", slope = 2,
+                             intercept = NA, status = "ok", source_id = NA,
+                             note = NA))
+  x <- substance(1, "mg/dL", "x", system = "badkind_sys")
+  expect_error(set_units(x, "nmol/L"), "unsupported conversion kind", fixed = TRUE)
+})
+
+test_that("a plain factor conversion applies in both directions", {
+  substance_system("factor_sys",
+    substances = data.frame(substance_id = "x", name = "X"),
+    conversions = data.frame(substance_id = "x", from_unit = "mg/dL",
+                             to_unit = "nmol/L", kind = "factor", slope = 4,
+                             intercept = NA, status = "ok", source_id = NA,
+                             note = NA))
+  fwd <- substance(2, "mg/dL", "x", system = "factor_sys")
+  expect_equal(as.numeric(set_units(fwd, "nmol/L")), 8)
+  rev <- substance(8, "nmol/L", "x", system = "factor_sys")
+  expect_equal(as.numeric(set_units(rev, "mg/dL")), 2)
+})
+
+test_that("a vector mixing convertible and unconvertible substances errors", {
+  x <- substance(c(1, 1), "mg/dL", c("glucose", "hba1c"))
+  expect_error(set_units(x, "mmol/L"), "hba1c", fixed = TRUE)
+})
+
+test_that("set_units() accepts a unit held in a variable", {
+  x <- substance(100, "mg/dL", "glucose")
+  target <- "mmol/L"
+  expect_equal(as.numeric(set_units(x, target, mode = "standard")),
+               5.5507, tolerance = 1e-4)
+})
+
+test_that("the default symbols mode accepts a bare unit expression", {
+  # set_units(x, mmol/L) without quotes is the units-package idiom and the
+  # default mode, so it needs to work here too
+  x <- substance(100, "mg/dL", "glucose")
+  expect_equal(as.numeric(set_units(x, mmol/L)), 5.5507, tolerance = 1e-4)
+  expect_equal(unit_label(set_units(x, mmol/L)), "mmol/L")
+
+  y <- substance(1, "g", "glucose")
+  expect_equal(as.numeric(set_units(y, mol)), 1 / 180.156, tolerance = 1e-6)
+})
+
+test_that("substance_convertible() sees explicit conversions too", {
+  # HbA1c % <-> mmol/mol exists only as a registered affine conversion
+  expect_true(substance_convertible("%", "mmol/mol", "hba1c"))
+  expect_true(substance_convertible("mmol/mol", "%", "hba1c"))
 })

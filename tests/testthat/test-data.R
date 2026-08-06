@@ -105,3 +105,29 @@ test_that("reading an absent or empty registry file is an error", {
   expect_error(substance_read_csv("substances", path = dir),
                "registry file is empty", fixed = TRUE)
 })
+
+test_that("substance_read_csv() reads each shipped table from the install", {
+  for (tbl in registry_tables) {
+    d <- substance_read_csv(tbl)
+    expect_s3_class(d, "data.frame")
+    expect_gt(nrow(d), 0L)
+  }
+  expect_error(substance_read_csv("nope"), "'arg' should be one of")
+})
+
+test_that("the shipped registry can be rebuilt from the CSVs", {
+  sys2 <- substance_load_default("rebuilt")
+  expect_s3_class(sys2, "substance_system")
+  expect_equal(nrow(sys2$substances), nrow(sys$substances))
+  expect_equal(nrow(sys2$parameters), nrow(sys$parameters))
+  # and it is a usable system, not just a parsed one
+  expect_equal(as.numeric(set_units(substance(100, "mg/dL", "glucose",
+                                              system = "rebuilt"), "mmol/L")),
+               5.5507, tolerance = 1e-4)
+})
+
+test_that("the loaded default system is the one the CSVs describe", {
+  expect_true("substances" %in% substance_systems())
+  expect_equal(substance_default_system(), "substances")
+  expect_gt(nrow(sys$substances), 100L)   # elements plus the clinical set
+})

@@ -1,0 +1,37 @@
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+name: test-coverage
+
+permissions: read-all
+
+jobs:
+  test-coverage:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::covr, any::xml2
+          needs: coverage
+
+      - name: Test coverage
+        run: |
+          cov <- covr::package_coverage(quiet = FALSE)
+          print(cov)
+          pct <- covr::percent_coverage(cov)
+          cat(sprintf("coverage: %.2f%%\n", pct))
+          # A coverage job that cannot go red is decoration. Fail below the
+          # level already reached, so coverage can only move up.
+          if (pct < 95) stop(sprintf("coverage %.2f%% is below the 95%% floor", pct))
+        shell: Rscript {0}

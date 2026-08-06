@@ -1,0 +1,105 @@
+test_that("mixed_substances holds a unit and a substance per element", {
+  m <- mixed_substances(c(100, 5.5, 140),
+                        c("mg/dL", "mmol/L", "mg/dL"),
+                        c("glucose", "glucose", "sodium"))
+  expect_s3_class(m, "mixed_substances")
+  expect_length(m, 3L)
+  expect_equal(as.numeric(m), c(100, 5.5, 140))
+  expect_equal(substance_of(m), c("glucose", "glucose", "sodium"))
+  expect_equal(substance_unit(m), c("mg/dL", "mmol/L", "mg/dL"))
+})
+
+test_that("as.numeric() works, which needs an as.double() method", {
+  # as.numeric() dispatches through as.double(); an as.numeric method alone is
+  # never reached and the vctrs default errors instead
+  m <- mixed_substances(c(1, 2), c("mg/dL", "mmol/L"), "glucose")
+  expect_equal(as.numeric(m), c(1, 2))
+  expect_equal(as.double(m), c(1, 2))
+})
+
+test_that("converting to one unit yields a homogeneous substance vector", {
+  m <- mixed_substances(c(100, 5.5, 140),
+                        c("mg/dL", "mmol/L", "mg/dL"),
+                        c("glucose", "glucose", "sodium"))
+  y <- set_units(m, "mmol/L")
+  expect_s3_class(y, "substance")
+  expect_equal(as.numeric(y), c(5.5507, 5.5, 60.897), tolerance = 1e-4)
+  expect_equal(substance_of(y), c("glucose", "glucose", "sodium"))
+  expect_equal(unit_label(y), "mmol/L")
+})
+
+test_that("conversion handles a unit that needs no substance", {
+  m <- mixed_substances(c(1, 1), c("g/dL", "g/L"), c("albumin", NA))
+  y <- set_units(m, "g/L")
+  expect_equal(as.numeric(y), c(10, 1))
+})
+
+test_that("a target unit is required", {
+  m <- mixed_substances(1, "mg/dL", "glucose")
+  expect_error(set_units(m), "a target unit is required", fixed = TRUE)
+})
+
+test_that("set_units() accepts a unit held in a variable", {
+  m <- mixed_substances(1, "mg/dL", "glucose")
+  target <- "mmol/L"
+  expect_equal(as.numeric(set_units(m, target, mode = "standard")),
+               0.05550745, tolerance = 1e-6)
+})
+
+test_that("unit strings udunits does not know are rejected", {
+  expect_error(mixed_substances(1, "frac of 1", "glucose"),
+               "not recognised by udunits", fixed = TRUE)
+  expect_error(mixed_substances(1, "Hb Fract.", "glucose"),
+               "not recognised by udunits", fixed = TRUE)
+})
+
+test_that("unknown substances are rejected", {
+  expect_error(mixed_substances(1, "mg/dL", "unobtainium"),
+               "unknown substance", fixed = TRUE)
+})
+
+test_that("format and print show unit and substance per element", {
+  m <- mixed_substances(c(1, 2), c("mg/dL", "mmol/L"), c("glucose", NA))
+  f <- format(m)
+  expect_match(f[1], "mg/dL", fixed = TRUE)
+  expect_match(f[1], "glucose", fixed = TRUE)
+  expect_match(f[2], "?", fixed = TRUE)          # unknown substance
+  expect_output(print(m), "mixed_substances")
+  expect_equal(vctrs::vec_ptype_abbr(m), "mxsub")
+  expect_equal(vctrs::vec_ptype_full(m), "mixed_substances")
+})
+
+test_that("subsetting and combining preserve unit and substance per element", {
+  m <- mixed_substances(c(1, 2, 3), c("mg/dL", "mmol/L", "g/L"),
+                        c("glucose", "sodium", "albumin"))
+  expect_equal(substance_unit(m[2:3]), c("mmol/L", "g/L"))
+  expect_equal(substance_of(m[2:3]), c("sodium", "albumin"))
+  expect_equal(substance_of(c(m, m)), rep(c("glucose", "sodium", "albumin"), 2))
+  expect_equal(substance_unit(rev(m)), c("g/L", "mmol/L", "mg/dL"))
+})
+
+test_that("combining across systems is refused", {
+  substance_system("mixed_iso",
+                   substances = data.frame(substance_id = "glucose",
+                                           name = "Glucose"))
+  a <- mixed_substances(1, "mg/dL", "glucose")
+  b <- mixed_substances(1, "mg/dL", "glucose", system = "mixed_iso")
+  expect_error(c(a, b), "different systems", fixed = TRUE)
+})
+
+test_that("arguments recycle to the length of x", {
+  m <- mixed_substances(c(1, 2, 3), "mg/dL", "glucose")
+  expect_equal(substance_unit(m), rep("mg/dL", 3))
+  expect_equal(substance_of(m), rep("glucose", 3))
+  expect_error(mixed_substances(c(1, 2, 3), c("mg/dL", "mmol/L"), "glucose"))
+})
+
+test_that("substance_unit() has no method for unrelated classes", {
+  expect_error(substance_unit(1:3), "no `substance_unit\\(\\)` method")
+})
+
+test_that("the default symbols mode accepts a bare unit expression", {
+  m <- mixed_substances(c(100, 5.5), c("mg/dL", "mmol/L"), "glucose")
+  expect_equal(as.numeric(set_units(m, mmol/L)), c(5.5507, 5.5),
+               tolerance = 1e-4)
+})

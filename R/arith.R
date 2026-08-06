@@ -128,8 +128,11 @@ vec_arith.substance.units <- function(op, x, y, ...)
 
 ## The reverse direction, `units * substance`, dispatches vec_arith() on the
 ## units object, so it needs a vec_arith.units to route from. vctrs ships these
-## for the base classes (numeric, Date, difftime, ...) but not for units; this
-## one arguably belongs in the units package rather than here.
+## for the base classes (numeric, Date, difftime, ...) but not for units, and it
+## belongs here rather than upstream: hosting it in units would oblige that
+## package to depend on vctrs for this one method and nothing else. The default
+## below defers to vctrs' own error, so units gains no behaviour it did not
+## already have -- units-to-units arithmetic never reaches vec_arith at all.
 
 #' @export
 #' @method vec_arith units

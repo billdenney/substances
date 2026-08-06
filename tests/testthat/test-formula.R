@@ -54,3 +54,21 @@ test_that("computed masses agree with PubChem to its stated precision", {
                  tolerance = 1.5 * 10^(-digits), info = f)
   }
 })
+
+test_that("a formula that is not element symbols at all is refused", {
+  expect_error(molar_mass_from_formula("2H2O"), "cannot parse formula",
+               fixed = TRUE)
+  expect_error(molar_mass_from_formula("h2o"), "cannot parse formula",
+               fixed = TRUE)
+})
+
+test_that("an element with no registered molar mass is reported", {
+  substance_system("no_mass",
+                   substances = data.frame(substance_id = "carbon",
+                                           name = "Carbon", formula = "C"),
+                   synonyms = data.frame(substance_id = "carbon", synonym = "C",
+                                         context = "element symbol",
+                                         source_id = NA))
+  expect_error(molar_mass_from_formula("C", system = "no_mass"),
+               "no atomic weight registered", fixed = TRUE)
+})

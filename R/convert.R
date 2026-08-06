@@ -156,7 +156,7 @@ convert_substance <- function(x, to) {
 #' @export
 set_units.substance <- function(x, value, ...,
                                 mode = units::units_options("set_units_mode")) {
-  if (missing(value)) value <- units::unitless()
+  if (missing(value)) value <- units::unitless
   else if (mode == "symbols") {
     value <- substitute(value)
     if (is.name(value) || is.call(value)) value <- format(value)

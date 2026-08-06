@@ -23,7 +23,7 @@
 #' substance(c(100, 140), "mg/dL", "glucose")
 #' substance(c(100, 140), "mg/dL", c("glucose", "sodium"))
 #' @export
-substance <- function(x = double(), unit = units::unitless(),
+substance <- function(x = double(), unit = units::unitless,
                       substance = NA_character_, system = NULL) {
   system_obj <- get_system(system)
   x <- as.double(x)
@@ -43,7 +43,7 @@ substance <- function(x = double(), unit = units::unitless(),
 #'   arguments; no checking is done.
 #' @export
 new_substance <- function(value = double(), substance_id = character(),
-                          unit_sym = units::unitless(),
+                          unit_sym = units::unitless,
                           system_name = substance_default_system()) {
   vctrs::new_rcrd(list(value = value, substance = substance_id),
                   unit = unit_sym, system = system_name, class = "substance")
@@ -53,13 +53,6 @@ as_symbolic_units <- function(unit) {
   if (inherits(unit, "symbolic_units")) return(unit)
   if (inherits(unit, "units")) return(units(unit))
   units(units::as_units(as.character(unit)))
-}
-
-## A length-1 `units` quantity carrying this vector's unit, for arithmetic.
-unit_quantity <- function(x) {
-  q <- 1
-  units(q) <- substance_unit(x)
-  q
 }
 
 #' Accessors for substance vectors
@@ -100,7 +93,15 @@ substance_of.default <- function(x)
 
 #' @rdname substance_of
 #' @export
-substance_unit <- function(x) attr(x, "unit")
+substance_unit <- function(x) UseMethod("substance_unit")
+
+#' @export
+substance_unit.substance <- function(x) attr(x, "unit")
+
+#' @export
+substance_unit.default <- function(x)
+  stop("no `substance_unit()` method for class ",
+       paste(class(x), collapse = "/"), call. = FALSE)
 
 #' @rdname substance_of
 #' @export
@@ -142,9 +143,8 @@ obj_print_header.substance <- function(x, ...) {
 #' @export
 as.character.substance <- function(x, ...) format(x, ...)
 
-#' @export
-as.numeric.substance <- function(x, ...) vctrs::field(x, "value")
-
+## as.numeric() dispatches through as.double(), so an as.numeric.substance
+## method would never be reached; defining only as.double() keeps both working.
 #' @export
 as.double.substance <- function(x, ...) vctrs::field(x, "value")
 

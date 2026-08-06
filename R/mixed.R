@@ -68,8 +68,15 @@ vec_ptype_full.mixed_substances <- function(x, ...) "mixed_substances"
 #' @export
 substance_of.mixed_substances <- function(x) vctrs::field(x, "substance")
 
+## Per-element unit strings, the counterpart of the single `unit` attribute a
+## homogeneous `substance` carries.
 #' @export
-as.numeric.mixed_substances <- function(x, ...) vctrs::field(x, "value")
+substance_unit.mixed_substances <- function(x) vctrs::field(x, "unit")
+
+## as.double(), not as.numeric(): as.numeric() dispatches through as.double(),
+## so an as.numeric method is never reached and the vctrs default errors.
+#' @export
+as.double.mixed_substances <- function(x, ...) vctrs::field(x, "value")
 
 #' Convert a mixed_substances vector to a single unit
 #'

@@ -74,10 +74,12 @@ We claim the tie only when the other operand is a `units` quantity; any other
 `Ops` conflict keeps R's default behaviour rather than being captured by us.
 
 The reverse direction needs a `vec_arith.units` to route from, which this
-package currently registers. `vctrs` ships such methods for the base classes
-but not for `units`, and this one arguably belongs in `units` itself — worth
-raising upstream. A test pins that ordinary units-to-units arithmetic is
-unaffected.
+package registers. `vctrs` ships such methods for the base classes but not for
+`units`, and it belongs here rather than upstream: hosting it in `units` would
+oblige that package to take a `vctrs` dependency for this one method and
+nothing else. Its default defers to `vctrs`' own error, so `units` gains no
+behaviour it did not already have, and a test pins that ordinary
+units-to-units arithmetic is unaffected.
 
 Only `*` and `/` are defined against a bare `units` quantity. Addition and
 comparison error, because a quantity with no substance should not silently

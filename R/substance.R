@@ -31,10 +31,11 @@ substance <- function(x = double(), unit = units::unitless,
                                   x_arg = "substance")
   id <- substance_resolve(substance, system_obj)
   unknown <- unique(substance[is.na(id) & !is.na(substance)])
-  if (length(unknown))
+  if (length(unknown)) {
     stop("unknown substance(s) in system '", system_obj$name, "': ",
          paste0("\"", unknown, "\"", collapse = ", "),
          "\n  See substance_systems() and substance_resolve().", call. = FALSE)
+  }
   new_substance(x, id, as_symbolic_units(unit), system_obj$name)
 }
 
@@ -50,8 +51,12 @@ new_substance <- function(value = double(), substance_id = character(),
 }
 
 as_symbolic_units <- function(unit) {
-  if (inherits(unit, "symbolic_units")) return(unit)
-  if (inherits(unit, "units")) return(units(unit))
+  if (inherits(unit, "symbolic_units")) {
+    return(unit)
+  }
+  if (inherits(unit, "units")) {
+    return(units(unit))
+  }
   units(units::as_units(as.character(unit)))
 }
 
@@ -73,9 +78,10 @@ substance_of <- function(x) UseMethod("substance_of")
 substance_of.substance <- function(x) vctrs::field(x, "substance")
 
 #' @export
-substance_of.default <- function(x)
+substance_of.default <- function(x) {
   stop("no `substance_of()` method for class ",
        paste(class(x), collapse = "/"), call. = FALSE)
+}
 
 #' @rdname substance_of
 #' @export
@@ -84,9 +90,10 @@ substance_of.default <- function(x)
   value <- vctrs::vec_recycle(as.character(value), length(x))
   id <- substance_resolve(value, substance_system_of(x))
   unknown <- unique(value[is.na(id) & !is.na(value)])
-  if (length(unknown))
+  if (length(unknown)) {
     stop("unknown substance(s): ", paste0("\"", unknown, "\"", collapse = ", "),
          call. = FALSE)
+  }
   vctrs::field(x, "substance") <- id
   x
 }
@@ -99,9 +106,10 @@ substance_unit <- function(x) UseMethod("substance_unit")
 substance_unit.substance <- function(x) attr(x, "unit")
 
 #' @export
-substance_unit.default <- function(x)
+substance_unit.default <- function(x) {
   stop("no `substance_unit()` method for class ",
        paste(class(x), collapse = "/"), call. = FALSE)
+}
 
 #' @rdname substance_of
 #' @export
@@ -165,20 +173,23 @@ vec_ptype2.substance <- function(x, y, ...) UseMethod("vec_ptype2.substance", y)
 
 #' @export
 #' @method vec_ptype2.substance default
-vec_ptype2.substance.default <- function(x, y, ..., x_arg = "", y_arg = "")
+vec_ptype2.substance.default <- function(x, y, ..., x_arg = "", y_arg = "") {
   vctrs::stop_incompatible_type(x, y, x_arg = x_arg, y_arg = y_arg)
+}
 
 #' @export
 #' @method vec_ptype2.substance substance
 vec_ptype2.substance.substance <- function(x, y, ...) {
-  if (!identical(unit_label(x), unit_label(y)))
+  if (!identical(unit_label(x), unit_label(y))) {
     stop("cannot combine `substance` vectors with different units: ",
          unit_label(x), " and ", unit_label(y),
          "\n  Convert one with set_units() first.", call. = FALSE)
-  if (!identical(substance_system_of(x), substance_system_of(y)))
+  }
+  if (!identical(substance_system_of(x), substance_system_of(y))) {
     stop("cannot combine `substance` vectors from different systems: '",
          substance_system_of(x), "' and '", substance_system_of(y), "'.",
          call. = FALSE)
+  }
   x
 }
 
@@ -188,8 +199,9 @@ vec_cast.substance <- function(x, to, ...) UseMethod("vec_cast.substance", x)
 
 #' @export
 #' @method vec_cast.substance default
-vec_cast.substance.default <- function(x, to, ..., x_arg = "", to_arg = "")
+vec_cast.substance.default <- function(x, to, ..., x_arg = "", to_arg = "") {
   vctrs::stop_incompatible_cast(x, to, x_arg = x_arg, to_arg = to_arg)
+}
 
 #' @export
 #' @method vec_cast.substance substance

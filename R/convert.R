@@ -1,80 +1,142 @@
 ## Find the product of small integer powers of a substance's parameters that
-## makes `from` and `to` commensurable.
+## makes `from` and `to` commensurable, and return the numeric factor it implies.
 ##
-## Returns a list with the numeric factor for one unit of `from`, and the powers
-## used, or NULL if no combination works. Errors if two distinct combinations
-## give materially different answers, rather than silently picking one.
+## The idea: every substance parameter is itself a quantity with units, so
+## multiplying by it moves between dimensions. Molar mass is g/mol, so
+## `mg/dL * (g/mol)^-1` lands on mmol/L. Valence is eq/mol, so sodium's
+## `mg/dL -> mEq/L` needs `molar_mass^-1 * valence^1`. Rather than tabulate which
+## combination each unit pair needs, try the small ones and ask udunits which
+## one works.
+##
+## `from` and `to` are unit strings, `params` a named list of `units` quantities.
+## Returns list(factor, powers), or NULL when nothing fits.
+##
+## The search space is tiny: a substance has two or three parameters and the
+## powers that occur in practice are -1, 0 and 1, so this is a handful of
+## convertibility checks, not a graph search.
 bridge_factor <- function(from, to, params, max_power = 1L, tolerance = 1e-9) {
-  if (!length(params)) return(NULL)
+  if (!length(params)) {
+    return(NULL)
+  }
+
+  ## One row per candidate combination: column j is the power of params[[j]].
+  ## With two parameters and max_power 1 that is the nine points of
+  ## {-1,0,1} x {-1,0,1}.
   grid <- as.matrix(expand.grid(
     rep(list(seq(-max_power, max_power)), length(params)),
     KEEP.OUT.ATTRS = FALSE))
-  grid <- grid[rowSums(abs(grid)) > 0, , drop = FALSE]   # 0 is the dimensional case
-  grid <- grid[order(rowSums(abs(grid))), , drop = FALSE] # fewest parameters first
+  ## The all-zero row means "no parameter needed", which is the plain
+  ## dimensional case; the caller has already handled it, so drop it.
+  grid <- grid[rowSums(abs(grid)) > 0, , drop = FALSE]
+  ## Try combinations that use the fewest parameters first, so a one-parameter
+  ## answer is reported ahead of an equivalent two-parameter one.
+  grid <- grid[order(rowSums(abs(grid))), , drop = FALSE]
 
+  ## One unit of `from`, as a quantity, so the value that comes back after
+  ## converting IS the conversion factor for one unit.
   from_q <- units::as_units(from)
+
   hits <- list()
   for (i in seq_len(nrow(grid))) {
     p <- grid[i, ]
+
+    ## Build `from` multiplied by this combination of parameters.
     q <- from_q
-    for (j in seq_along(params)) if (p[j] != 0) q <- q * params[[j]]^p[j]
+    for (j in seq_along(params)) {
+      if (p[j] != 0) {
+        q <- q * params[[j]]^p[j]
+      }
+    }
+
+    ## If that landed on something commensurable with `to`, converting it gives
+    ## the factor. udunits errors rather than returning FALSE on some malformed
+    ## units, hence the tryCatch.
     factor <- tryCatch({
-      if (units::ud_are_convertible(units::deparse_unit(q), to))
-        as.numeric(units::set_units(q, to, mode = "standard")) else NULL
+      if (units::ud_are_convertible(units::deparse_unit(q), to)) {
+        as.numeric(units::set_units(q, to, mode = "standard"))
+      } else {
+        NULL
+      }
     }, error = function(e) NULL)
-    if (!is.null(factor))
+
+    if (!is.null(factor)) {
       hits[[length(hits) + 1L]] <- list(
         factor = factor, powers = stats::setNames(p, names(params)))
+    }
   }
-  if (!length(hits)) return(NULL)
 
+  if (!length(hits)) {
+    return(NULL)
+  }
+
+  ## Several combinations can be dimensionally valid at once -- if a substance
+  ## had both a density and a molar volume, mass to volume could go either way.
+  ## Agreeing answers are fine and the shortest is returned. Disagreeing ones
+  ## mean the registry is inconsistent, and picking one silently would bury
+  ## that, so refuse and show what conflicted.
   factors <- vapply(hits, `[[`, numeric(1), "factor")
   spread <- max(factors) - min(factors)
   if (spread > tolerance * max(abs(factors))) {
-    described <- vapply(hits, function(h)
+    described <- vapply(hits, function(h) {
       paste0(paste(names(h$powers)[h$powers != 0],
                    h$powers[h$powers != 0], sep = "^", collapse = " * "),
-             " = ", format(h$factor)), character(1))
+             " = ", format(h$factor))
+    }, character(1))
     stop("ambiguous conversion from ", from, " to ", to,
          ": more than one combination of substance parameters applies and they ",
          "disagree.\n  ", paste(described, collapse = "\n  "), call. = FALSE)
   }
+
   hits[[1L]]
 }
 
 ## Explicit (affine / factor) conversion for one substance and unit pair.
 find_explicit <- function(substance_id, from, to, system) {
-  if (is.na(substance_id)) return(NULL)
+  if (is.na(substance_id)) {
+    return(NULL)
+  }
   cv <- system$conversions
-  if (!nrow(cv)) return(NULL)
+  if (!nrow(cv)) {
+    return(NULL)
+  }
   cv <- cv[cv$substance_id == substance_id, , drop = FALSE]
-  if (!nrow(cv)) return(NULL)
-  norm <- function(u) vapply(u, function(z)
-    tryCatch(unit_label(z), error = function(e) NA_character_), character(1),
-    USE.NAMES = FALSE)
+  if (!nrow(cv)) {
+    return(NULL)
+  }
+  norm <- function(u) {
+    vapply(u, function(z) {
+      tryCatch(unit_label(z), error = function(e) NA_character_)
+    }, character(1),
+      USE.NAMES = FALSE)
+  }
   cv$from_norm <- norm(cv$from_unit)
   cv$to_norm <- norm(cv$to_unit)
-  from <- unit_label(from); to <- unit_label(to)
+  from <- unit_label(from)
+    to <- unit_label(to)
 
   fwd <- which(cv$from_norm == from & cv$to_norm == to)
-  if (length(fwd)) return(c(as.list(cv[fwd[1L], ]), list(reverse = FALSE)))
+  if (length(fwd)) {
+    return(c(as.list(cv[fwd[1L], ]), list(reverse = FALSE)))
+  }
   rev <- which(cv$from_norm == to & cv$to_norm == from)
-  if (length(rev)) return(c(as.list(cv[rev[1L], ]), list(reverse = TRUE)))
+  if (length(rev)) {
+    return(c(as.list(cv[rev[1L], ]), list(reverse = TRUE)))
+  }
   NULL
 }
 
 apply_explicit <- function(conv, values) {
-  if (!identical(conv$status, "ok"))
+  if (!identical(conv$status, "ok")) {
     stop("the conversion ", conv$from_unit, " -> ", conv$to_unit, " for '",
          conv$substance_id, "' is marked \"", conv$status, "\"",
          if (!is.na(conv$note) && nzchar(conv$note)) paste0(": ", conv$note),
          "\n  Refusing to apply it.", call. = FALSE)
+  }
   slope <- conv$slope
   intercept <- if (is.na(conv$intercept)) 0 else conv$intercept
   switch(conv$kind,
     affine = ,
-    factor = if (isTRUE(conv$reverse)) (values - intercept) / slope
-             else values * slope + intercept,
+    factor = if (isTRUE(conv$reverse)) (values - intercept) / slope else values * slope + intercept,
     stop("unsupported conversion kind: ", conv$kind, call. = FALSE))
 }
 
@@ -82,7 +144,9 @@ convert_substance <- function(x, to) {
   from <- unit_label(x)
   to_sym <- as_symbolic_units(to)
   to <- as.character(to_sym)
-  if (identical(from, to)) return(x)
+  if (identical(from, to)) {
+    return(x)
+  }
 
   system <- get_system(substance_system_of(x))
   values <- vctrs::field(x, "value")
@@ -120,12 +184,13 @@ convert_substance <- function(x, to) {
     values[rows] <- values[rows] * bridge$factor
   }
 
-  if (length(unresolved))
+  if (length(unresolved)) {
     stop("cannot convert ", from, " to ", to, " for: ",
          paste(unique(unresolved), collapse = ", "),
          "\n  `units` cannot relate these dimensions, and the registry has no ",
          "parameter or explicit conversion that bridges them.",
          "\n  See substance_info() for what is registered.", call. = FALSE)
+  }
 
   new_substance(values, ids, to_sym, substance_system_of(x))
 }
@@ -156,10 +221,13 @@ convert_substance <- function(x, to) {
 #' @export
 set_units.substance <- function(x, value, ...,
                                 mode = units::units_options("set_units_mode")) {
-  if (missing(value)) value <- units::unitless
-  else if (mode == "symbols") {
+  if (missing(value)) {
+    value <- units::unitless
+  } else if (mode == "symbols") {
     value <- substitute(value)
-    if (is.name(value) || is.call(value)) value <- format(value)
+    if (is.name(value) || is.call(value)) {
+      value <- format(value)
+    }
   }
   convert_substance(x, value)
 }
@@ -180,13 +248,22 @@ set_units.substance <- function(x, value, ...,
 substance_convertible <- function(from, to, substance = NA_character_,
                                   system = NULL) {
   system <- get_system(system)
-  from <- unit_label(from); to <- unit_label(to)
-  if (identical(from, to)) return(TRUE)
+  from <- unit_label(from)
+    to <- unit_label(to)
+  if (identical(from, to)) {
+    return(TRUE)
+  }
   id <- substance_resolve(substance, system)
-  if (!is.null(find_explicit(id, from, to, system))) return(TRUE)
+  if (!is.null(find_explicit(id, from, to, system))) {
+    return(TRUE)
+  }
   if (isTRUE(tryCatch(units::ud_are_convertible(from, to),
-                      error = function(e) FALSE))) return(TRUE)
-  if (is.na(id)) return(FALSE)
+                      error = function(e) FALSE))) {
+    return(TRUE)
+  }
+  if (is.na(id)) {
+    return(FALSE)
+  }
   !is.null(tryCatch(bridge_factor(from, to, substance_parameters(id, system)),
                     error = function(e) NULL))
 }

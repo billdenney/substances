@@ -11,6 +11,7 @@ substance_system(
   parameters = NULL,
   conversions = NULL,
   sources = NULL,
+  parameter_units = NULL,
   inherit = NULL
 )
 }
@@ -21,6 +22,13 @@ substance_system(
 the registry columns. Missing tables are created empty. If \code{substances} is
 omitted, an identity row is created for every \code{substance_id} the other
 tables mention.}
+
+\item{parameter_units}{A named character vector declaring parameter kinds
+beyond the built-in ones, as \code{kind = "units it must be convertible to"}.
+Use this for properties the shipped registry does not cover — enzyme
+specific activity, a turnover number, a partition coefficient. The
+conversion machinery is indifferent to what a kind means; it only needs the
+units to be right.}
 
 \item{inherit}{Name of a system to inherit entries from, or \code{NULL}. Entries
 in this system take precedence.}
@@ -52,4 +60,17 @@ substance_system("example_pkg", inherit = "substances", parameters = data.frame(
   source_id    = "internal-spec"))
 
 set_units(substance(1, "mg/dL", "widgetol", system = "example_pkg"), "mmol/L")
+
+# a parameter kind of your own: enzyme mass to catalytic activity
+substance_system("example_enzymes",
+  parameter_units = c(specific_activity = "U/mg"),
+  parameters = data.frame(
+    substance_id = "alkaline_phosphatase",
+    parameter    = "specific_activity",
+    value        = 1000,
+    unit         = "U/mg",
+    source_id    = "supplier-certificate"))
+
+set_units(substance(1, "ug", "alkaline_phosphatase",
+                    system = "example_enzymes"), "U")
 }

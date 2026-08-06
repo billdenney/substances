@@ -35,17 +35,19 @@ mixed_substances <- function(x = double(), unit = character(),
                                   x_arg = "substance")
 
   bad_unit <- unique(unit[!vapply(unit, unit_is_defined, logical(1))])
-  if (length(bad_unit))
+  if (length(bad_unit)) {
     stop("unit(s) not recognised by udunits: ",
          paste0("\"", bad_unit, "\"", collapse = ", "),
          "\n  Normalising unit strings is out of scope for this package; see ",
          "units::install_unit() for genuinely missing symbols.", call. = FALSE)
+  }
 
   id <- substance_resolve(substance, system_obj)
   unknown <- unique(substance[is.na(id) & !is.na(substance)])
-  if (length(unknown))
+  if (length(unknown)) {
     stop("unknown substance(s) in system '", system_obj$name, "': ",
          paste0("\"", unknown, "\"", collapse = ", "), call. = FALSE)
+  }
 
   vctrs::new_rcrd(list(value = x, substance = id, unit = unit),
                   system = system_obj$name, class = "mixed_substances")
@@ -88,10 +90,13 @@ as.double.mixed_substances <- function(x, ...) vctrs::field(x, "value")
 #' @export
 set_units.mixed_substances <- function(x, value, ...,
                                        mode = units::units_options("set_units_mode")) {
-  if (missing(value)) stop("a target unit is required", call. = FALSE)
-  else if (mode == "symbols") {
+  if (missing(value)) {
+    stop("a target unit is required", call. = FALSE)
+  } else if (mode == "symbols") {
     value <- substitute(value)
-    if (is.name(value) || is.call(value)) value <- format(value)
+    if (is.name(value) || is.call(value)) {
+      value <- format(value)
+    }
   }
   to_sym <- as_symbolic_units(value)
   system <- substance_system_of(x)
@@ -110,21 +115,24 @@ set_units.mixed_substances <- function(x, value, ...,
 
 #' @export
 #' @method vec_ptype2 mixed_substances
-vec_ptype2.mixed_substances <- function(x, y, ...)
+vec_ptype2.mixed_substances <- function(x, y, ...) {
   UseMethod("vec_ptype2.mixed_substances", y)
+}
 
 #' @export
 #' @method vec_ptype2.mixed_substances mixed_substances
 vec_ptype2.mixed_substances.mixed_substances <- function(x, y, ...) {
-  if (!identical(substance_system_of(x), substance_system_of(y)))
+  if (!identical(substance_system_of(x), substance_system_of(y))) {
     stop("cannot combine `mixed_substances` from different systems", call. = FALSE)
+  }
   x
 }
 
 #' @export
 #' @method vec_cast mixed_substances
-vec_cast.mixed_substances <- function(x, to, ...)
+vec_cast.mixed_substances <- function(x, to, ...) {
   UseMethod("vec_cast.mixed_substances", x)
+}
 
 #' @export
 #' @method vec_cast.mixed_substances mixed_substances

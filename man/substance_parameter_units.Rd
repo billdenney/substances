@@ -4,7 +4,8 @@
 \alias{substance_parameter_units}
 \title{Parameters that bridge otherwise incommensurable dimensions}
 \format{
-A named character vector of the units each parameter must have.
+A named character vector: the units each built-in parameter must be
+convertible to.
 }
 \usage{
 substance_parameter_units
@@ -13,4 +14,13 @@ substance_parameter_units
 Each is a quantity of the substance itself, so a single value covers every
 unit pair it can bridge: one \code{molar_mass} converts mg/dL to mmol/L, g to mol
 and ug/mL to nmol/L alike.
+}
+\details{
+These are the kinds the shipped registry uses, not a closed list. Nothing in
+the conversion machinery knows what a molar mass is — it multiplies by
+whatever quantities a substance carries and asks \code{units} which combination
+works. A system may therefore declare kinds of its own through the
+\code{parameter_units} argument of \code{\link[=substance_system]{substance_system()}}: enzyme specific activity
+in \code{U/mg}, a turnover number in \code{1/s}, a partition coefficient, anything that
+is a property of the substance with units attached.
 }

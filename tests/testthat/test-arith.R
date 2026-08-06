@@ -188,3 +188,22 @@ test_that("addition reports a unit that cannot be reconciled", {
   y <- substance(1, "mg/dL", "hba1c")
   expect_error(x + y, "cannot use `+` on", fixed = TRUE)
 })
+
+test_that("the MISSING method is reached only by unary operators", {
+  # vctrs passes its MISSING sentinel only from the unary forms, so the method
+  # needs no arity check; this pins that, since the whole branch depends on it
+  x <- substance(c(1, -2), "mmol/L", "glucose")
+  expect_equal(as.numeric(-x), c(-1, 2))          # unary reaches it
+  expect_equal(as.numeric(+x), c(1, -2))
+
+  # binary minus goes elsewhere: if it reached MISSING it would negate x and
+  # ignore y entirely
+  y <- substance(c(1, 1), "mmol/L", "glucose")
+  expect_equal(as.numeric(x - y), c(0, -3))
+  # even the refused binary form lands in .numeric, not MISSING: it reports the
+  # bare number rather than silently returning -x
+  expect_error(x - 1, "has no unit", fixed = TRUE)
+
+  # and a unary operator we do not define still errors
+  expect_error(!x, class = "vctrs_error_incompatible_op")
+})

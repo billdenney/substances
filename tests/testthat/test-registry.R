@@ -219,3 +219,100 @@ test_that("a system with only its own entries sees nothing inherited", {
   expect_true(is.na(substance_resolve("glucose", system = "byo_isolated")))
   expect_true(is.na(substance_resolve("loner")))
 })
+
+test_that("a system can declare parameter kinds of its own", {
+  # the bridge machinery does not know what a molar mass is; it multiplies by
+  # whatever the substance carries, so a new kind needs no code, only units
+  substance_system("enzymes", parameter_units = c(specific_activity = "U/mg"),
+    parameters = data.frame(
+      substance_id = "alkaline_phosphatase",
+      parameter    = "specific_activity",
+      value        = 1000,
+      unit         = "U/mg",
+      source_id    = "supplier-certificate"))
+
+  # enzyme mass -> catalytic activity, via a kind the package never heard of
+  expect_equal(as.numeric(set_units(substance(1, "ug", "alkaline_phosphatase",
+                                              system = "enzymes"), "U")),
+               1, tolerance = 1e-9)
+  # and back
+  expect_equal(as.numeric(set_units(substance(1, "U", "alkaline_phosphatase",
+                                              system = "enzymes"), "ug")),
+               1, tolerance = 1e-9)
+})
+
+test_that("a turnover number bridges enzyme amount and activity", {
+  # kcat is per-enzyme-molecule turnover, so mol enzyme -> mol substrate/s
+  substance_system("kcat_demo", parameter_units = c(turnover = "kat/mol"),
+    parameters = data.frame(
+      substance_id = "carbonic_anhydrase",
+      parameter    = "turnover",
+      value        = 1e6,
+      unit         = "1/s",
+      source_id    = "textbook"))
+  expect_equal(as.numeric(set_units(substance(1, "nmol", "carbonic_anhydrase",
+                                              system = "kcat_demo"), "mmol/s")),
+               1, tolerance = 1e-9)
+})
+
+test_that("WHO international units are already a supported kind", {
+  # IU is a separate dimension and `activity` bridges it to amount
+  expect_equal(as.numeric(set_units(substance(1, "mIU/L", "insulin"), "pmol/L")),
+               6, tolerance = 1e-9)
+  expect_equal(as.character(substance_parameter_units[["activity"]]), "mol/IU")
+})
+
+test_that("a declared kind may also redefine a built-in one", {
+  substance_system("odd_units", parameter_units = c(molar_mass = "kg/kmol"),
+    parameters = data.frame(substance_id = "x", parameter = "molar_mass",
+                            value = 100, unit = "kg/kmol", source_id = "spec"))
+  expect_equal(as.numeric(set_units(substance(1, "g", "x",
+                                              system = "odd_units"), "mol")),
+               0.01, tolerance = 1e-9)
+})
+
+test_that("an undeclared parameter kind is refused, and says how to declare it", {
+  expect_error(
+    substance_system("undeclared", parameters = data.frame(
+      substance_id = "x", parameter = "specific_activity", value = 1,
+      unit = "U/mg")),
+    "unknown parameter kind", fixed = TRUE)
+  expect_error(
+    substance_system("undeclared2", parameters = data.frame(
+      substance_id = "x", parameter = "specific_activity", value = 1,
+      unit = "U/mg")),
+    "parameter_units", fixed = TRUE)
+})
+
+test_that("a parameter whose units do not match its kind is refused", {
+  # wrong units are not a bridge, they are a silently wrong answer
+  expect_error(
+    substance_system("wrong_units", parameters = data.frame(
+      substance_id = "x", parameter = "molar_mass", value = 1, unit = "g/L")),
+    "not convertible to", fixed = TRUE)
+  expect_error(
+    substance_system("wrong_units2",
+      parameter_units = c(specific_activity = "U/mg"),
+      parameters = data.frame(substance_id = "x",
+                              parameter = "specific_activity",
+                              value = 1, unit = "g/mol")),
+    "not convertible to", fixed = TRUE)
+})
+
+test_that("parameter_units must be a named vector", {
+  expect_error(
+    substance_system("badkinds", parameter_units = "U/mg",
+                     parameters = data.frame(substance_id = "x",
+                                             parameter = "molar_mass",
+                                             value = 1, unit = "g/mol")),
+    "named character vector", fixed = TRUE)
+})
+
+test_that("declared kinds are inherited along with the entries", {
+  substance_system("enzymes_child", inherit = "enzymes")
+  expect_true("specific_activity" %in%
+                names(get_system("enzymes_child")$parameter_units))
+  expect_equal(as.numeric(set_units(substance(1, "ug", "alkaline_phosphatase",
+                                              system = "enzymes_child"), "U")),
+               1, tolerance = 1e-9)
+})

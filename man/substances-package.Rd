@@ -49,12 +49,11 @@ Useful links:
 
 }
 \author{
-\strong{Maintainer}: Inaki Ucar \email{iucar@fedoraproject.org} (\href{https://orcid.org/0000-0001-6403-5550}{ORCID})
+\strong{Maintainer}: Bill Denney \email{wdenney@humanpredictions.com} (\href{https://orcid.org/0000-0002-5759-428X}{ORCID}) [copyright holder]
 
 Authors:
 \itemize{
-  \item Inaki Ucar \email{iucar@fedoraproject.org} (\href{https://orcid.org/0000-0001-6403-5550}{ORCID})
-  \item Bill Denney (\href{https://orcid.org/0000-0002-5759-428X}{ORCID})
+  \item Bill Denney \email{wdenney@humanpredictions.com} (\href{https://orcid.org/0000-0002-5759-428X}{ORCID}) [copyright holder]
 }
 
 }

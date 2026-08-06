@@ -1,12 +1,10 @@
 Package: substances
 Title: Substance-Aware Unit Conversions
 Version: 0.0.0.9000
-Authors@R: c(
-    person("Inaki", "Ucar", role = c("aut", "cre"),
-           email = "iucar@fedoraproject.org",
-           comment = c(ORCID = "0000-0001-6403-5550")),
-    person("Bill", "Denney", role = "aut",
-           comment = c(ORCID = "0000-0002-5759-428X")))
+Authors@R:
+    person("Bill", "Denney", role = c("aut", "cre", "cph"),
+           email = "wdenney@humanpredictions.com",
+           comment = c(ORCID = "0000-0002-5759-428X"))
 Description: Unit conversions that depend on a property of the substance being
     measured. The 'units' package converts between commensurable units, but
     cannot convert mg/dL to mmol/L because that requires the analyte's molar

@@ -11,17 +11,20 @@
 #' @export
 substance_read_csv <- function(table, path = NULL) {
   table <- match.arg(table, registry_tables)
-  if (is.null(path))
+  if (is.null(path)) {
     path <- system.file("extdata", package = "substances", mustWork = TRUE)
+  }
   file <- file.path(path, registry_files[[table]])
-  if (!file.exists(file))
+  if (!file.exists(file)) {
     stop("registry file not found: ", file, call. = FALSE)
+  }
   out <- utils::read.csv(file, stringsAsFactors = FALSE, na.strings = c("NA", ""))
-  if (!nrow(out))
+  if (!nrow(out)) {
     stop("registry file is empty: ", file,
          "\n  An empty registry would make every conversion fail with a ",
          "confusing message, so this is an error rather than a warning.",
          call. = FALSE)
+  }
   out
 }
 

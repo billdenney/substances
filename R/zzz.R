@@ -27,7 +27,9 @@ install_extra_units <- function() {
   installed <- character(0)
   for (i in seq_len(nrow(substances_extra_units))) {
     sym <- substances_extra_units$symbol[i]
-    if (unit_is_defined(sym)) next
+    if (unit_is_defined(sym)) {
+      next
+    }
     def <- substances_extra_units$def[i]
     if (nzchar(def)) {
       units::install_unit(sym, def, substances_extra_units$name[i])
@@ -56,8 +58,9 @@ install_extra_units <- function() {
 
 .onUnload <- function(libpath) {
   for (sym in get0("installed_units", envir = substances_env,
-                   ifnotfound = character(0)))
+                   ifnotfound = character(0))) {
     try(units::remove_unit(sym), silent = TRUE)
+  }
   invisible(NULL)
 }
 # nocov end

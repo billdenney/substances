@@ -26,7 +26,16 @@ registry_columns <- list(
 #' unit pair it can bridge: one `molar_mass` converts mg/dL to mmol/L, g to mol
 #' and ug/mL to nmol/L alike.
 #'
-#' @format A named character vector of the units each parameter must have.
+#' These are the kinds the shipped registry uses, not a closed list. Nothing in
+#' the conversion machinery knows what a molar mass is — it multiplies by
+#' whatever quantities a substance carries and asks `units` which combination
+#' works. A system may therefore declare kinds of its own through the
+#' `parameter_units` argument of [substance_system()]: enzyme specific activity
+#' in `U/mg`, a turnover number in `1/s`, a partition coefficient, anything that
+#' is a property of the substance with units attached.
+#'
+#' @format A named character vector: the units each built-in parameter must be
+#'   convertible to.
 #' @export
 substance_parameter_units <- c(
   molar_mass   = "g/mol",   # mass <-> amount
@@ -55,6 +64,12 @@ substance_parameter_units <- c(
 #'   the registry columns. Missing tables are created empty. If `substances` is
 #'   omitted, an identity row is created for every `substance_id` the other
 #'   tables mention.
+#' @param parameter_units A named character vector declaring parameter kinds
+#'   beyond the built-in ones, as `kind = "units it must be convertible to"`.
+#'   Use this for properties the shipped registry does not cover — enzyme
+#'   specific activity, a turnover number, a partition coefficient. The
+#'   conversion machinery is indifferent to what a kind means; it only needs the
+#'   units to be right.
 #' @param inherit Name of a system to inherit entries from, or `NULL`. Entries
 #'   in this system take precedence.
 #'
@@ -70,16 +85,43 @@ substance_parameter_units <- c(
 #'   source_id    = "internal-spec"))
 #'
 #' set_units(substance(1, "mg/dL", "widgetol", system = "example_pkg"), "mmol/L")
+#'
+#' # a parameter kind of your own: enzyme mass to catalytic activity
+#' substance_system("example_enzymes",
+#'   parameter_units = c(specific_activity = "U/mg"),
+#'   parameters = data.frame(
+#'     substance_id = "alkaline_phosphatase",
+#'     parameter    = "specific_activity",
+#'     value        = 1000,
+#'     unit         = "U/mg",
+#'     source_id    = "supplier-certificate"))
+#'
+#' set_units(substance(1, "ug", "alkaline_phosphatase",
+#'                     system = "example_enzymes"), "U")
 #' @export
 substance_system <- function(name, substances = NULL, synonyms = NULL,
                              parameters = NULL, conversions = NULL,
-                             sources = NULL, inherit = NULL) {
+                             sources = NULL, parameter_units = NULL,
+                             inherit = NULL) {
   stopifnot(is.character(name), length(name) == 1L, nzchar(name))
   tables <- list(substances = substances, synonyms = synonyms,
                  parameters = parameters, conversions = conversions,
                  sources = sources)
-  for (tbl in registry_tables)
+  for (tbl in registry_tables) {
     tables[[tbl]] <- coerce_registry_table(tables[[tbl]], tbl)
+  }
+
+  ## Locally declared kinds win over the built-ins, so a system can also
+  ## redefine what units an existing kind requires.
+  kinds <- substance_parameter_units
+  if (length(parameter_units)) {
+    if (is.null(names(parameter_units)) || anyNA(names(parameter_units)) ||
+          !all(nzchar(names(parameter_units)))) {
+      stop("`parameter_units` must be a named character vector, as ",
+           "c(kind = \"units\")", call. = FALSE)
+    }
+    kinds[names(parameter_units)] <- as.character(parameter_units)
+  }
 
   # An identity table is bookkeeping, not information, when the caller has only
   # a handful of substances to declare. Derive it rather than demand it.
@@ -87,20 +129,26 @@ substance_system <- function(name, substances = NULL, synonyms = NULL,
     declared <- unique(unlist(lapply(
       tables[c("synonyms", "parameters", "conversions")], `[[`, "substance_id")))
     declared <- declared[!is.na(declared)]
-    if (length(declared))
+    if (length(declared)) {
       tables$substances <- coerce_registry_table(
         data.frame(substance_id = declared, name = declared,
                    stringsAsFactors = FALSE), "substances")
+    }
   }
 
   if (!is.null(inherit)) {
     parent <- get_system(inherit)
     # local rows come first, so dropping later duplicates makes them win
-    for (tbl in registry_tables)
+    for (tbl in registry_tables) {
       tables[[tbl]] <- dedupe_registry(rbind(tables[[tbl]], parent[[tbl]]), tbl)
+    }
+    inherited <- parent$parameter_units
+    kinds <- c(kinds, inherited[setdiff(names(inherited), names(kinds))])
   }
 
-  system <- structure(c(list(name = name), tables), class = "substance_system")
+  system <- structure(c(list(name = name), tables,
+                        list(parameter_units = kinds)),
+                      class = "substance_system")
   validate_system(system)
   systems <- get("systems", envir = substances_env)
   systems[[name]] <- system
@@ -117,15 +165,21 @@ coerce_registry_table <- function(x, tbl) {
   }
   x <- as.data.frame(x, stringsAsFactors = FALSE)
   missing_cols <- setdiff(cols, names(x))
-  for (nm in missing_cols) x[[nm]] <- NA_character_
+  for (nm in missing_cols) {
+    x[[nm]] <- NA_character_
+  }
   x <- x[, cols, drop = FALSE]
   # numeric columns stay numeric; everything else is character
   numeric_cols <- c("value", "slope", "intercept")
-  for (nm in intersect(numeric_cols, cols))
+  for (nm in intersect(numeric_cols, cols)) {
     x[[nm]] <- as.numeric(x[[nm]])
-  for (nm in setdiff(cols, numeric_cols))
+  }
+  for (nm in setdiff(cols, numeric_cols)) {
     x[[nm]] <- as.character(x[[nm]])
-  if ("status" %in% cols) x$status[is.na(x$status)] <- "ok"
+  }
+  if ("status" %in% cols) {
+    x$status[is.na(x$status)] <- "ok"
+  }
   x
 }
 
@@ -146,34 +200,60 @@ dedupe_registry <- function(x, tbl) {
 
 validate_system <- function(system) {
   p <- system$parameters
-  unknown <- setdiff(unique(p$parameter), names(substance_parameter_units))
-  if (length(unknown))
-    stop("unknown parameter(s) in system '", system$name, "': ",
-         paste(unknown, collapse = ", "), call. = FALSE)
+  kinds <- system$parameter_units
+
+  unknown <- setdiff(unique(p$parameter), names(kinds))
+  if (length(unknown)) {
+    stop("unknown parameter kind(s) in system '", system$name, "': ",
+         paste(unknown, collapse = ", "),
+         "\n  Known kinds: ", paste(names(kinds), collapse = ", "),
+         "\n  Declare a new one with the `parameter_units` argument of ",
+         "substance_system().", call. = FALSE)
+  }
+
+  ## A parameter with the wrong units is not a bridge, it is a silently wrong
+  ## answer, so check the dimension here rather than at conversion time.
+  for (i in seq_len(nrow(p))) {
+    required <- kinds[[p$parameter[i]]]
+    ok <- isTRUE(tryCatch(units::ud_are_convertible(p$unit[i], required),
+                          error = function(e) FALSE))
+    if (!ok) {
+      stop("parameter '", p$parameter[i], "' for '", p$substance_id[i],
+           "' has units ", p$unit[i], ", which are not convertible to ",
+           required, " as that kind requires.", call. = FALSE)
+    }
+  }
 
   dup <- duplicated(p[, c("substance_id", "parameter")])
-  if (any(dup))
+  if (any(dup)) {
     stop("duplicate (substance_id, parameter) in system '", system$name, "': ",
          paste(unique(paste(p$substance_id[dup], p$parameter[dup])),
                collapse = ", "), call. = FALSE)
+  }
 
   ids <- system$substances$substance_id
   for (tbl in c("synonyms", "parameters", "conversions")) {
     orphan <- setdiff(system[[tbl]]$substance_id, ids)
-    if (length(orphan))
+    if (length(orphan)) {
       stop("substance_id(s) in `", tbl, "` with no entry in `substances`: ",
            paste(orphan, collapse = ", "), call. = FALSE)
+    }
   }
   invisible(system)
 }
 
 get_system <- function(system = NULL) {
-  if (inherits(system, "substance_system")) return(system)
+  if (inherits(system, "substance_system")) {
+    return(system)
+  }
   systems <- get0("systems", envir = substances_env, ifnotfound = list())
-  if (is.null(system)) system <- substance_default_system()
-  if (!system %in% names(systems))
+  if (is.null(system)) {
+    system <- substance_default_system()
+  }
+  if (!system %in% names(systems)) {
     stop("no conversion system named '", system, "'. Available: ",
          paste(names(systems), collapse = ", "), call. = FALSE)
+  }
   systems[[system]]
 }
 
@@ -241,10 +321,13 @@ substance_parameters <- function(substance_id, system = NULL) {
   p <- system$parameters
   p <- p[p$substance_id %in% substance_id & p$status %in% "ok" & !is.na(p$value), ,
          drop = FALSE]
-  if (!nrow(p)) return(list())
+  if (!nrow(p)) {
+    return(list())
+  }
   stats::setNames(
-    lapply(seq_len(nrow(p)), function(i)
-      units::set_units(p$value[i], p$unit[i], mode = "standard")),
+    lapply(seq_len(nrow(p)), function(i) {
+      units::set_units(p$value[i], p$unit[i], mode = "standard")
+    }),
     p$parameter)
 }
 
@@ -258,7 +341,9 @@ substance_parameters <- function(substance_id, system = NULL) {
 substance_info <- function(x, system = NULL) {
   system <- get_system(system)
   id <- substance_resolve(x, system)
-  if (is.na(id)) stop("unknown substance: ", x, call. = FALSE)
+  if (is.na(id)) {
+    stop("unknown substance: ", x, call. = FALSE)
+  }
   cite <- function(d) {
     d$citation <- system$sources$citation[match(d$source_id, system$sources$source_id)]
     d
@@ -283,8 +368,9 @@ print.substance_system <- function(x, ...) {
 #' @export
 print.substance_info <- function(x, ...) {
   cat("<substance ", x$substance$substance_id, ">  ", x$substance$name, "\n", sep = "")
-  if (!is.na(x$substance$formula) && nzchar(x$substance$formula))
+  if (!is.na(x$substance$formula) && nzchar(x$substance$formula)) {
     cat("  formula: ", x$substance$formula, "\n", sep = "")
+  }
   if (nrow(x$parameters)) {
     cat("  parameters:\n")
     for (i in seq_len(nrow(x$parameters))) {
@@ -297,19 +383,21 @@ print.substance_info <- function(x, ...) {
                                 x$parameters$citation[i]))))
       # the note is where reference conditions and caveats live, so a value is
       # not really reviewable without it
-      if (!is.na(x$parameters$note[i]) && nzchar(x$parameters$note[i]))
+      if (!is.na(x$parameters$note[i]) && nzchar(x$parameters$note[i])) {
         cat(strwrap(x$parameters$note[i], width = 78, prefix = "      ",
                     initial = "      "), sep = "\n")
+      }
     }
   }
   if (nrow(x$conversions)) {
     cat("  conversions:\n")
-    for (i in seq_len(nrow(x$conversions)))
+    for (i in seq_len(nrow(x$conversions))) {
       cat(sprintf("    %s -> %s (%s) %s\n",
                   x$conversions$from_unit[i], x$conversions$to_unit[i],
                   x$conversions$kind[i],
                   ifelse(is.na(x$conversions$citation[i]), "",
                          x$conversions$citation[i])))
+    }
   }
   invisible(x)
 }

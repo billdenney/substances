@@ -27,17 +27,21 @@ molar_mass_from_formula <- function(formula, system = NULL) {
 }
 
 molar_mass_one <- function(formula, system) {
-  if (is.na(formula) || !nzchar(formula)) return(NA_real_)
+  if (is.na(formula) || !nzchar(formula)) {
+    return(NA_real_)
+  }
   body <- sub("[+-][0-9]*$", "", formula)   # drop trailing ionic charge
-  if (grepl("[()\u00b7.]", body))
+  if (grepl("[()\u00b7.]", body)) {
     stop("cannot parse formula \"", formula,
          "\": parenthesised groups and hydrates are not supported.",
          call. = FALSE)
+  }
 
   m <- gregexpr("([A-Z][a-z]?)([0-9]*)", body)
   parts <- regmatches(body, m)[[1L]]
-  if (!length(parts) || !identical(paste(parts, collapse = ""), body))
+  if (!length(parts) || !identical(paste(parts, collapse = ""), body)) {
     stop("cannot parse formula \"", formula, "\"", call. = FALSE)
+  }
 
   symbols <- sub("[0-9]*$", "", parts)
   counts <- sub("^[A-Za-z]+", "", parts)
@@ -45,16 +49,21 @@ molar_mass_one <- function(formula, system) {
 
   weights <- vapply(symbols, function(s) {
     id <- substance_resolve(s, system)
-    if (is.na(id)) return(NA_real_)
+    if (is.na(id)) {
+      return(NA_real_)
+    }
     p <- substance_parameters(id, system)
-    if (is.null(p$molar_mass)) return(NA_real_)
+    if (is.null(p$molar_mass)) {
+      return(NA_real_)
+    }
     as.numeric(units::set_units(p$molar_mass, "g/mol", mode = "standard"))
   }, numeric(1), USE.NAMES = FALSE)
 
-  if (anyNA(weights))
+  if (anyNA(weights)) {
     stop("no atomic weight registered for element(s) ",
          paste(unique(symbols[is.na(weights)]), collapse = ", "),
          " in formula \"", formula, "\"", call. = FALSE)
+  }
 
   sum(weights * counts)
 }

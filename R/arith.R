@@ -9,26 +9,32 @@
 same_substance_or_stop <- function(x, y, op) {
   sx <- vctrs::field(x, "substance")
   sy <- vctrs::field(y, "substance")
-  if (anyNA(sx) || anyNA(sy))
+  if (anyNA(sx) || anyNA(sy)) {
     stop("cannot use `", op, "` when the substance is unknown", call. = FALSE)
+  }
   n <- max(length(sx), length(sy))
-  sx <- rep_len(sx, n); sy <- rep_len(sy, n)
+  sx <- rep_len(sx, n)
+    sy <- rep_len(sy, n)
   bad <- sx != sy
-  if (any(bad))
+  if (any(bad)) {
     stop("cannot use `", op, "` on different substances: ",
          paste(unique(paste(sx[bad], "and", sy[bad])), collapse = "; "),
          call. = FALSE)
+  }
   invisible(TRUE)
 }
 
 ## Bring `y` into `x`'s unit, substance-aware, with a clearer error than the
 ## conversion machinery gives on its own.
 align_units <- function(x, y, op) {
-  if (identical(unit_label(x), unit_label(y))) return(y)
+  if (identical(unit_label(x), unit_label(y))) {
+    return(y)
+  }
   tryCatch(convert_substance(y, substance_unit(x)),
-           error = function(e)
+           error = function(e) {
              stop("cannot use `", op, "` on ", unit_label(x), " and ",
-                  unit_label(y), ": ", conditionMessage(e), call. = FALSE))
+                  unit_label(y), ": ", conditionMessage(e), call. = FALSE)
+           })
 }
 
 #' @export
@@ -37,9 +43,15 @@ vec_arith.substance <- function(op, x, y, ...) UseMethod("vec_arith.substance", 
 
 #' @export
 #' @method vec_arith.substance default
-vec_arith.substance.default <- function(op, x, y, ...)
+vec_arith.substance.default <- function(op, x, y, ...) {
   vctrs::stop_incompatible_op(op, x, y)
+}
 
+## Unary operators only. vctrs dispatches here exactly when `y` is its MISSING
+## sentinel, which it passes only from the unary forms of `Ops`; a binary `x - y`
+## reaches vec_arith.substance.substance or .numeric instead. So `op` needs no
+## arity check, only a whitelist -- `!x` also arrives here, with op = "!", and
+## falls through to the error.
 #' @export
 #' @method vec_arith.substance MISSING
 vec_arith.substance.MISSING <- function(op, x, y, ...) {
@@ -53,10 +65,11 @@ vec_arith.substance.MISSING <- function(op, x, y, ...) {
 #' @export
 #' @method vec_arith.substance substance
 vec_arith.substance.substance <- function(op, x, y, ...) {
-  if (!identical(substance_system_of(x), substance_system_of(y)))
+  if (!identical(substance_system_of(x), substance_system_of(y))) {
     stop("cannot use `", op, "` on `substance` vectors from different systems: '",
          substance_system_of(x), "' and '", substance_system_of(y), "'.",
          call. = FALSE)
+  }
   switch(op,
     `+` = ,
     `-` = {
@@ -122,8 +135,9 @@ chooseOpsMethod.substance <- function(x, y, mx, my, cl, reverse) inherits(y, "un
 
 #' @export
 #' @method vec_arith.substance units
-vec_arith.substance.units <- function(op, x, y, ...)
+vec_arith.substance.units <- function(op, x, y, ...) {
   substance_arith_units(op, x, y, reverse = FALSE)
+}
 
 ## The reverse direction, `units * substance`, dispatches vec_arith() on the
 ## units object, so it needs a vec_arith.units to route from. vctrs ships these
@@ -139,23 +153,26 @@ vec_arith.units <- function(op, x, y, ...) UseMethod("vec_arith.units", y)
 
 #' @export
 #' @method vec_arith.units default
-vec_arith.units.default <- function(op, x, y, ...)
+vec_arith.units.default <- function(op, x, y, ...) {
   vctrs::stop_incompatible_op(op, x, y)
+}
 
 #' @export
 #' @method vec_arith.units substance
-vec_arith.units.substance <- function(op, x, y, ...)
+vec_arith.units.substance <- function(op, x, y, ...) {
   substance_arith_units(op, y, x, reverse = TRUE)
+}
 
 ## `s` is the substance operand and `q` the units one; `reverse` says whether
 ## `q` came first in the expression.
 substance_arith_units <- function(op, s, q, reverse) {
-  if (!op %in% c("*", "/"))
+  if (!op %in% c("*", "/")) {
     stop("cannot use `", op, "` on a `substance` and a bare `units` quantity: ",
          "only `*` and `/` are defined, because a quantity with no substance ",
          "cannot be added to or compared with one that has a substance.",
          "\n  Give the other operand a substance, or use drop_substance().",
          call. = FALSE)
+  }
   sq <- drop_substance(s)
   combined <- if (reverse) get(op, envir = baseenv())(q, sq)
               else get(op, envir = baseenv())(sq, q)
@@ -169,9 +186,10 @@ substance_arith_units <- function(op, s, q, reverse) {
 sum.substance <- function(..., na.rm = FALSE) {
   x <- vctrs::vec_c(...)
   ids <- unique(stats::na.omit(vctrs::field(x, "substance")))
-  if (length(ids) != 1L)
+  if (length(ids) != 1L) {
     stop("cannot sum a `substance` vector holding ", length(ids),
          " substances; split by substance first.", call. = FALSE)
+  }
   new_substance(sum(vctrs::field(x, "value"), na.rm = na.rm), ids,
                 substance_unit(x), substance_system_of(x))
 }
@@ -179,9 +197,10 @@ sum.substance <- function(..., na.rm = FALSE) {
 #' @export
 mean.substance <- function(x, ..., na.rm = FALSE) {
   ids <- unique(stats::na.omit(vctrs::field(x, "substance")))
-  if (length(ids) != 1L)
+  if (length(ids) != 1L) {
     stop("cannot average a `substance` vector holding ", length(ids),
          " substances; split by substance first.", call. = FALSE)
+  }
   new_substance(mean(vctrs::field(x, "value"), na.rm = na.rm), ids,
                 substance_unit(x), substance_system_of(x))
 }

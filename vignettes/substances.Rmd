@@ -371,6 +371,58 @@ study's labels onto substance ids, and a `conversions` data frame adds affine or
 factor relationships that no parameter can derive. Nothing about that machinery
 is specific to the substances shipped here.
 
+### Parameter kinds of your own
+
+The bridge parameters are not a closed list either. Nothing in the conversion
+machinery knows what a molar mass *is* — it multiplies by whatever quantities a
+substance carries and asks `units` which combination lands on the target. A new
+kind therefore needs no code, only a declaration of what units it must have.
+
+Enzyme specific activity, for instance, bridges the mass of an enzyme and its
+catalytic activity:
+
+```{r}
+substance_system("enzymes", parameter_units = c(specific_activity = "U/mg"),
+  parameters = data.frame(
+    substance_id = "alkaline_phosphatase",
+    parameter    = "specific_activity",
+    value        = 1000,
+    unit         = "U/mg",
+    source_id    = "supplier-certificate"))
+
+set_units(substance(1, "ug", "alkaline_phosphatase", system = "enzymes"), "U")
+```
+
+or a turnover number, which relates enzyme *amount* to activity:
+
+```{r}
+substance_system("kinetics", parameter_units = c(turnover = "kat/mol"),
+  parameters = data.frame(
+    substance_id = "carbonic_anhydrase",
+    parameter    = "turnover",
+    value        = 1e6,
+    unit         = "1/s",
+    source_id    = "textbook"))
+
+set_units(substance(1, "nmol", "carbonic_anhydrase", system = "kinetics"),
+          "mmol/s")
+```
+
+`U` and `IU` are both installed at load, and they are deliberately different
+dimensions: `U` is the enzyme unit, `umol/min`, while `IU` is the WHO
+biological-standard unit whose relationship to mass or amount is fixed by an
+assay standard and differs per substance. That is why insulin needs an
+`activity` parameter and alkaline phosphatase does not.
+
+The units are checked against the kind when the system is built, so a parameter
+that could not possibly bridge what it claims to is caught at registration
+rather than at conversion time:
+
+```{r, error = TRUE}
+substance_system("wrong", parameters = data.frame(
+  substance_id = "x", parameter = "molar_mass", value = 1, unit = "g/L"))
+```
+
 ## What is out of scope
 
 Normalising unit **strings** — `ng/ml` versus `ng/mL`, `IU/L` versus `U/L`,

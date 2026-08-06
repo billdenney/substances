@@ -1,0 +1,32 @@
+Package: substances
+Title: Substance-Aware Unit Conversions
+Version: 0.0.0.9000
+Authors@R: c(
+    person("Inaki", "Ucar", role = c("aut", "cre"),
+           email = "iucar@fedoraproject.org",
+           comment = c(ORCID = "0000-0001-6403-5550")),
+    person("Bill", "Denney", role = "aut",
+           comment = c(ORCID = "0000-0002-5759-428X")))
+Description: Unit conversions that depend on a property of the substance being
+    measured. The 'units' package converts between commensurable units, but
+    cannot convert mg/dL to mmol/L because that requires the analyte's molar
+    mass. This package attaches a substance to each element of a vector,
+    supplies the substance-specific quantities (molar mass, density, valence,
+    biological activity) that bridge otherwise incommensurable dimensions, and
+    refuses to convert or combine quantities of different substances unless the
+    relationship is explicitly defined. Reference data ships as CSV with a
+    citation for every value.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 8.0.0
+Depends:
+    R (>= 4.1.0)
+Imports:
+    units (>= 0.8-0),
+    vctrs (>= 0.6.0)
+Suggests:
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+URL: https://github.com/r-quantities/substances
+BugReports: https://github.com/r-quantities/substances/issues

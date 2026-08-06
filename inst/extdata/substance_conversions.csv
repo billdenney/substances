@@ -1,0 +1,2 @@
+"substance_id","from_unit","to_unit","kind","slope","intercept","status","source_id","note"
+"hba1c","mmol/mol","%","affine",0.09148,2.152,"ok","ngsp-master-eq","NGSP master equation, stored in the published direction; the inverse is derived, not transcribed"

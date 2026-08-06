@@ -1,0 +1,193 @@
+#' Substance-aware quantities
+#'
+#' A vector of measurements that each carry the substance they measure. The
+#' substance is a *field*, so it survives subsetting, concatenation, reordering
+#' and data-frame operations; the unit is a single attribute for the whole
+#' vector, exactly as in [units::units].
+#'
+#' A different substance per element is the ordinary case, not an edge case:
+#' long-format laboratory data has one analyte per row. Use
+#' [mixed_substances()] when the *unit* also varies per element.
+#'
+#' @param x A numeric vector.
+#' @param unit A unit, as a string, a [units::units] object or `symbolic_units`.
+#' @param substance A character vector of substance names, synonyms or
+#'   identifiers, recycled to the length of `x`. `NA` means the substance is
+#'   unknown, which permits dimensional conversion but not parametric.
+#' @param system A conversion system name or object; defaults to
+#'   [substance_default_system()].
+#'
+#' @return A `substance` vector.
+#'
+#' @examples
+#' substance(c(100, 140), "mg/dL", "glucose")
+#' substance(c(100, 140), "mg/dL", c("glucose", "sodium"))
+#' @export
+substance <- function(x = double(), unit = units::unitless(),
+                      substance = NA_character_, system = NULL) {
+  system_obj <- get_system(system)
+  x <- as.double(x)
+  substance <- vctrs::vec_recycle(as.character(substance), length(x),
+                                  x_arg = "substance")
+  id <- substance_resolve(substance, system_obj)
+  unknown <- unique(substance[is.na(id) & !is.na(substance)])
+  if (length(unknown))
+    stop("unknown substance(s) in system '", system_obj$name, "': ",
+         paste0("\"", unknown, "\"", collapse = ", "),
+         "\n  See substance_systems() and substance_resolve().", call. = FALSE)
+  new_substance(x, id, as_symbolic_units(unit), system_obj$name)
+}
+
+#' @rdname substance
+#' @param value,substance_id,unit_sym,system_name Low-level constructor
+#'   arguments; no checking is done.
+#' @export
+new_substance <- function(value = double(), substance_id = character(),
+                          unit_sym = units::unitless(),
+                          system_name = substance_default_system()) {
+  vctrs::new_rcrd(list(value = value, substance = substance_id),
+                  unit = unit_sym, system = system_name, class = "substance")
+}
+
+as_symbolic_units <- function(unit) {
+  if (inherits(unit, "symbolic_units")) return(unit)
+  if (inherits(unit, "units")) return(units(unit))
+  units(units::as_units(as.character(unit)))
+}
+
+## A length-1 `units` quantity carrying this vector's unit, for arithmetic.
+unit_quantity <- function(x) {
+  q <- 1
+  units(q) <- substance_unit(x)
+  q
+}
+
+#' Accessors for substance vectors
+#'
+#' @param x A `substance` vector.
+#' @param value Replacement value.
+#' @return `substance_of()` a character vector of substance identifiers;
+#'   `substance_unit()` a `symbolic_units`; `drop_substance()` a
+#'   [units::units] vector; `substance_system_of()` the system name.
+#' @examples
+#' x <- substance(c(100, 140), "mg/dL", c("glucose", "sodium"))
+#' substance_of(x)
+#' drop_substance(x)
+#' @export
+substance_of <- function(x) UseMethod("substance_of")
+
+#' @export
+substance_of.substance <- function(x) vctrs::field(x, "substance")
+
+#' @export
+substance_of.default <- function(x)
+  stop("no `substance_of()` method for class ",
+       paste(class(x), collapse = "/"), call. = FALSE)
+
+#' @rdname substance_of
+#' @export
+`substance_of<-` <- function(x, value) {
+  stopifnot(inherits(x, "substance"))
+  value <- vctrs::vec_recycle(as.character(value), length(x))
+  id <- substance_resolve(value, substance_system_of(x))
+  unknown <- unique(value[is.na(id) & !is.na(value)])
+  if (length(unknown))
+    stop("unknown substance(s): ", paste0("\"", unknown, "\"", collapse = ", "),
+         call. = FALSE)
+  vctrs::field(x, "substance") <- id
+  x
+}
+
+#' @rdname substance_of
+#' @export
+substance_unit <- function(x) attr(x, "unit")
+
+#' @rdname substance_of
+#' @export
+substance_system_of <- function(x) attr(x, "system")
+
+#' @rdname substance_of
+#' @export
+drop_substance <- function(x) {
+  stopifnot(inherits(x, "substance"))
+  out <- vctrs::field(x, "value")
+  units(out) <- substance_unit(x)
+  out
+}
+
+unit_label <- function(x) {
+  sym <- if (inherits(x, "substance")) substance_unit(x) else as_symbolic_units(x)
+  as.character(sym)
+}
+
+#' @export
+format.substance <- function(x, ...) {
+  sub <- vctrs::field(x, "substance")
+  sub[is.na(sub)] <- "?"
+  paste0(format(vctrs::field(x, "value"), ...), " [", unit_label(x), "] ", sub)
+}
+
+#' @export
+vec_ptype_abbr.substance <- function(x, ...) "subst"
+
+#' @export
+vec_ptype_full.substance <- function(x, ...) paste0("substance<", unit_label(x), ">")
+
+#' @export
+obj_print_header.substance <- function(x, ...) {
+  cat("<", vctrs::vec_ptype_full(x), "[", length(x), "]>\n", sep = "")
+  invisible(x)
+}
+
+#' @export
+as.character.substance <- function(x, ...) format(x, ...)
+
+#' @export
+as.numeric.substance <- function(x, ...) vctrs::field(x, "value")
+
+#' @export
+as.double.substance <- function(x, ...) vctrs::field(x, "value")
+
+#' @export
+units.substance <- function(x) substance_unit(x)
+
+## ---- combination rules -----------------------------------------------------
+## Combining is allowed only when the unit and the system match. Different
+## substances within a vector are fine -- that is the point -- but silently
+## reinterpreting one unit as another, or mixing registries, is not.
+
+#' @export
+#' @method vec_ptype2 substance
+vec_ptype2.substance <- function(x, y, ...) UseMethod("vec_ptype2.substance", y)
+
+#' @export
+#' @method vec_ptype2.substance default
+vec_ptype2.substance.default <- function(x, y, ..., x_arg = "", y_arg = "")
+  vctrs::stop_incompatible_type(x, y, x_arg = x_arg, y_arg = y_arg)
+
+#' @export
+#' @method vec_ptype2.substance substance
+vec_ptype2.substance.substance <- function(x, y, ...) {
+  if (!identical(unit_label(x), unit_label(y)))
+    stop("cannot combine `substance` vectors with different units: ",
+         unit_label(x), " and ", unit_label(y),
+         "\n  Convert one with set_units() first.", call. = FALSE)
+  if (!identical(substance_system_of(x), substance_system_of(y)))
+    stop("cannot combine `substance` vectors from different systems: '",
+         substance_system_of(x), "' and '", substance_system_of(y), "'.",
+         call. = FALSE)
+  x
+}
+
+#' @export
+#' @method vec_cast substance
+vec_cast.substance <- function(x, to, ...) UseMethod("vec_cast.substance", x)
+
+#' @export
+#' @method vec_cast.substance default
+vec_cast.substance.default <- function(x, to, ..., x_arg = "", to_arg = "")
+  vctrs::stop_incompatible_cast(x, to, x_arg = x_arg, to_arg = to_arg)
+
+#' @export
+#' @method vec_cast.substance substance
+vec_cast.substance.substance <- function(x, to, ...) x

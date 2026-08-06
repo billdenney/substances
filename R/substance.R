@@ -155,6 +155,9 @@ units.substance <- function(x) substance_unit(x)
 ## Combining is allowed only when the unit and the system match. Different
 ## substances within a vector are fine -- that is the point -- but silently
 ## reinterpreting one unit as another, or mixing registries, is not.
+##
+## Ordering and equality use the vctrs record defaults, which compare the value
+## field first and the substance second; there is no method here for either.
 
 #' @export
 #' @method vec_ptype2 substance

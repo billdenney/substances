@@ -221,5 +221,6 @@ Prototype, implementing the design proposed on issues
 [#1](https://github.com/r-quantities/substances/issues/1),
 [#5](https://github.com/r-quantities/substances/issues/5) and
 [#2](https://github.com/r-quantities/substances/issues/2). **The design is not
-yet agreed upstream and the API should be expected to change.** See `NEWS.md`
-for what is implemented and what is known not to work.
+yet agreed upstream and the API should be expected to change.** Nothing has been
+released, so `NEWS.md` will stay empty until there is a first release to change
+from; `vignette("substances")` is the tour of what the package does.

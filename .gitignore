@@ -47,3 +47,8 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+# Vignette build artifacts
+inst/doc
+vignettes/*.html
+vignettes/*.R

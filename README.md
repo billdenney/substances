@@ -66,6 +66,15 @@ Parameters compose. Sodium mg/dL to mEq/L needs molar mass *and* valence:
 set_units(substance(1, "mg/dL", "sodium"), "meq/L")    #> 0.4349761 [meq/L]
 ```
 
+Densities of the elements at their standard state are registered too, so mass
+and volume are bridged, and with the atomic weight you get the molar volume:
+
+```r
+set_units(substance(19.3, "g", "gold"), "cm^3")    #> 1.000934 [cm^3] gold
+set_units(substance(1, "mol", "gold"), "cm^3")     #> 10.21505 [cm^3] gold
+set_units(substance(1, "mol", "helium"), "L")      #> 22.42354 [L] helium
+```
+
 And the parameter is not always a molar mass. Insulin mU/L to pmol/L is fixed by
 the WHO activity standard, not by insulin's mass:
 
@@ -128,6 +137,16 @@ Lp(a) has no molar mass in the registry because apo(a) isoform size varies
 between individuals, so there is no valid fixed mass-to-molar factor. Recording
 that as `disputed`, with a note, is different from leaving the row out — which
 would read as "not looked up yet".
+
+Substance identity is the point, and it is not always obvious. Blood urea
+nitrogen is reported as the mass of *nitrogen*, so treating "BUN" as another
+name for urea would apply urea's molar mass and be wrong by a factor of 2.14.
+They are registered as different substances:
+
+```r
+set_units(substance(1, "mg/dL", "BUN"),  "mmol/L")   #> 0.3569644 [mmol/L] urea_nitrogen
+set_units(substance(1, "mg/dL", "urea"), "mmol/L")   #> 0.1665113 [mmol/L] urea
+```
 
 Molar masses of ordinary molecules are computed from their formula rather than
 transcribed, so a reviewer can re-derive every one of them:

@@ -10,6 +10,12 @@
 ## of them, and the only values needing an external citation are the atomic
 ## weights themselves and the things that have no formula (proteins, and
 ## activity standards).
+##
+## Inputs are cached files, not live downloads, so the build is reproducible and
+## the inputs are reviewable in a diff:
+##   data-raw/pubchem_periodictable.csv  from
+##     https://pubchem.ncbi.nlm.nih.gov/rest/pug/periodictable/CSV
+##   inst/extdata/chemical_elements.csv  as contributed in PR 3
 
 library(units)
 library(vctrs)
@@ -25,23 +31,27 @@ dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 ## ---------------------------------------------------------------- sources ---
 sources <- data.frame(stringsAsFactors = FALSE, rbind(
   c("ciaaw-2021", "CIAAW, Standard Atomic Weights 2021 (conventional values)",
-    "https://ciaaw.org/atomic-weights.htm", "2026-08-05"),
+    "https://ciaaw.org/atomic-weights.htm", "2026-08-06"),
   c("periodictable-pkg",
     "R package 'PeriodicTable' (values predate the 2009 IUPAC revision; see note)",
     "https://cran.r-project.org/package=PeriodicTable", "2023-10-21"),
   c("computed-from-formula",
-    "Computed from the molecular formula and CIAAW 2021 atomic weights", "", "2026-08-05"),
+    "Computed from the molecular formula and CIAAW 2021 atomic weights", "",
+    "2026-08-06"),
+  c("pubchem-periodictable",
+    "PubChem Periodic Table of Elements (density and standard state)",
+    "https://pubchem.ncbi.nlm.nih.gov/periodic-table/", "2026-08-06"),
+  c("pubchem", "PubChem Compound database (formula and identifiers)",
+    "https://pubchem.ncbi.nlm.nih.gov/", "2026-08-06"),
   c("ngsp-master-eq", "NGSP, IFCC Standardization: IFCC and NGSP",
-    "https://ngsp.org/ifccngsp.asp", "2026-08-05"),
+    "https://ngsp.org/ifccngsp.asp", "2026-08-06"),
   c("who-is-66-304",
     "WHO 1st International Standard for Insulin, Human, recombinant DNA (66/304)",
-    "https://www.nibsc.org/", "2026-08-05"),
+    "https://www.nibsc.org/", "2026-08-06"),
   c("uniprot-P01308", "UniProt P01308 (INS_HUMAN), mature insulin chains",
-    "https://www.uniprot.org/uniprotkb/P01308", "2026-08-05"),
+    "https://www.uniprot.org/uniprotkb/P01308", "2026-08-06"),
   c("uniprot-P02768", "UniProt P02768 (ALBU_HUMAN), mature chain",
-    "https://www.uniprot.org/uniprotkb/P02768", "2026-08-05"),
-  c("pubchem", "PubChem Compound database",
-    "https://pubchem.ncbi.nlm.nih.gov/", "2026-08-05")))
+    "https://www.uniprot.org/uniprotkb/P02768", "2026-08-06")))
 names(sources) <- c("source_id", "citation", "url", "accessed")
 
 ## --------------------------------------------------------------- elements ---
@@ -53,8 +63,8 @@ elements <- read.csv("inst/extdata/chemical_elements.csv", stringsAsFactors = FA
 ciaaw <- c(H = 1.008, Li = 6.94, C = 12.011, N = 14.007, O = 15.999,
            F = 18.998403162, Na = 22.98976928, Mg = 24.305, Al = 26.9815384,
            P = 30.973761998, S = 32.06, Cl = 35.45, K = 39.0983, Ca = 40.078,
-           Fe = 55.845, Cu = 63.546, Zn = 65.38, Se = 78.971, Br = 79.904,
-           I = 126.90447)
+           Fe = 55.845, Co = 58.933194, Cu = 63.546, Zn = 65.38, Se = 78.971,
+           Br = 79.904, I = 126.90447)
 
 element_substances <- data.frame(
   stringsAsFactors = FALSE,
@@ -89,65 +99,150 @@ element_synonyms <- data.frame(
   context      = "element symbol",
   source_id    = NA_character_)
 
-## ------------------------------------------------------- molecules, cited ---
-mol <- function(id, name, formula, cas = NA, inchikey = NA, cid = NA)
-  data.frame(stringsAsFactors = FALSE, substance_id = id, name = name,
-             formula = formula, cas = cas, inchikey = inchikey,
-             pubchem_cid = as.character(cid))
+## ------------------------------------------------------- element density ---
+## Density bridges mass and volume, and for an element it also gives the molar
+## volume once combined with the atomic weight. Density is a property of the
+## bulk material, so it stays consistent with an ATOMIC molar mass even where
+## the standard state is diatomic: one mole of H atoms occupies 1.008/0.00008988
+## = 11.2 L, which is half a mole of H2 at STP, as it should be. The standard
+## state and reference conditions are recorded because a gas density is
+## meaningless without them.
+ptable <- read.csv("data-raw/pubchem_periodictable.csv", stringsAsFactors = FALSE)
+ptable$Density <- suppressWarnings(as.numeric(ptable$Density))
+ptable <- ptable[!is.na(ptable$Density), ]
 
-molecules <- rbind(
-  mol("glucose", "D-Glucose", "C6H12O6", "50-99-7",
-      "WQZGKKKJIJFFOK-GASJEMHNSA-N", 5793),
-  mol("cholesterol", "Cholesterol", "C27H46O", "57-88-5",
-      "HVYWMOMLDIMFJA-DPAQBDIFSA-N", 5997),
-  mol("triolein", "Triolein", "C57H104O6", NA,
-      "PHYFQTYBJUILEZ-IUPFWZBJSA-N", 5497163),
-  mol("bilirubin", "Bilirubin", "C33H36N4O6", NA,
-      "BPYKTIZUTYGOLE-IFADSCNNSA-N", 5280352),
-  mol("3_hydroxybutyrate", "3-Hydroxybutyric acid", "C4H8O3", NA,
-      "WHBMMWSBFZVSSR-UHFFFAOYSA-N", 441),
-  mol("creatinine", "Creatinine", "C4H7N3O", NA,
-      "DDRJAANPRJIHGJ-UHFFFAOYSA-N", 588),
-  mol("urea", "Urea", "CH4N2O", NA, "XSQUKJJJFZCRTK-UHFFFAOYSA-N", 1176),
-  mol("uric_acid", "Uric acid", "C5H4N4O3", NA,
-      "LEHOTFFKMJEONL-UHFFFAOYSA-N", 1175),
-  mol("lactic_acid", "Lactic acid", "C3H6O3", NA,
-      "JVTAAEKCZFNVCJ-UHFFFAOYSA-N", 612),
-  mol("carbon_dioxide", "Carbon dioxide", "CO2", "124-38-9",
-      "CURLTUGMZLYLDI-UHFFFAOYSA-N", 280),
-  mol("water", "Water", "H2O", "7732-18-5",
-      "XLYOFNOQVPJJNP-UHFFFAOYSA-N", 962),
-  mol("ethanol", "Ethanol", "C2H6O", "64-17-5",
-      "LFQSCWFLJHTTHZ-UHFFFAOYSA-N", 702),
-  mol("acetaminophen", "Acetaminophen", "C8H9NO2", "103-90-2",
-      "RZVAJINKPMORJF-UHFFFAOYSA-N", 1983),
-  mol("bicarbonate", "Bicarbonate", "CHO3", "71-52-3", NA, 769),
-  # no usable formula -> external citation required
-  mol("insulin", "Insulin (human)", NA, "11061-68-0", NA, NA),
-  mol("c_peptide", "C-peptide (human)", NA, NA, NA, NA),
-  mol("albumin", "Serum albumin (human)", NA, NA, NA, NA),
-  mol("hba1c", "Haemoglobin A1c", NA, NA, NA, NA),
-  mol("lipoprotein_a", "Lipoprotein(a)", NA, NA, NA, NA))
+density_note <- ifelse(
+  grepl("Gas", ptable$StandardState),
+  paste0("standard state ", tolower(ptable$StandardState),
+         "; at STP (0 C, 101.325 kPa)"),
+  paste0("standard state ", tolower(ptable$StandardState),
+         "; at or near room temperature"))
+
+element_density <- data.frame(
+  stringsAsFactors = FALSE,
+  substance_id = tolower(ptable$Name),
+  parameter    = "density",
+  value        = ptable$Density,
+  unit         = "g/mL",
+  status       = "ok",
+  source_id    = "pubchem-periodictable",
+  note         = density_note)
+# keep only elements the registry actually knows
+element_density <- element_density[
+  element_density$substance_id %in% element_substances$substance_id, ]
+
+## ------------------------------------------------------- molecules, cited ---
+## Formula and identifiers from PubChem; molar mass is computed from the
+## formula below, never transcribed.
+molecules <- utils::read.csv(stringsAsFactors = FALSE, strip.white = TRUE,
+                             text = "
+substance_id,name,formula,inchikey,pubchem_cid
+glucose,D-Glucose,C6H12O6,WQZGKKKJIJFFOK-GASJEMHNSA-N,5793
+galactose,D-Galactose,C6H12O6,WQZGKKKJIJFFOK-SVZMEOIVSA-N,6036
+fructose,D-Fructose,C6H12O6,LKDRXBCSQODPBY-VRPWFDPXSA-N,2723872
+cholesterol,Cholesterol,C27H46O,HVYWMOMLDIMFJA-DPAQBDIFSA-N,5997
+triolein,Triolein,C57H104O6,PHYFQTYBJUILEZ-IUPFWZBJSA-N,5497163
+bilirubin,Bilirubin,C33H36N4O6,BPYKTIZUTYGOLE-IFADSCNNSA-N,5280352
+3_hydroxybutyrate,3-Hydroxybutyric acid,C4H8O3,WHBMMWSBFZVSSR-UHFFFAOYSA-N,441
+acetoacetic_acid,Acetoacetic acid,C4H6O3,WDJHALXBUFZDSR-UHFFFAOYSA-N,96
+creatinine,Creatinine,C4H7N3O,DDRJAANPRJIHGJ-UHFFFAOYSA-N,588
+creatine,Creatine,C4H9N3O2,CVSVTCORWBXHQV-UHFFFAOYSA-N,586
+urea,Urea,CH4N2O,XSQUKJJJFZCRTK-UHFFFAOYSA-N,1176
+uric_acid,Uric acid,C5H4N4O3,LEHOTFFKMJEONL-UHFFFAOYSA-N,1175
+lactic_acid,Lactic acid,C3H6O3,JVTAAEKCZFNVCJ-UHFFFAOYSA-N,612
+pyruvic_acid,Pyruvic acid,C3H4O3,LCTONWCANYUPML-UHFFFAOYSA-N,1060
+oxalic_acid,Oxalic acid,C2H2O4,MUBZPKHOEPUJKR-UHFFFAOYSA-N,971
+citric_acid,Citric acid,C6H8O7,KRKNYBCHXYNGOX-UHFFFAOYSA-N,311
+glycerol,Glycerol,C3H8O3,PEDCQBHIVMGVHV-UHFFFAOYSA-N,753
+homocysteine,L-Homocysteine,C4H9NO2S,FFFHZYDWPBMWHY-VKHMYHEASA-N,91552
+ammonia,Ammonia,H3N,QGZKDVFQNNGYKY-UHFFFAOYSA-N,222
+carbon_dioxide,Carbon dioxide,CO2,CURLTUGMZLYLDI-UHFFFAOYSA-N,280
+bicarbonate,Bicarbonate,CHO3,,769
+water,Water,H2O,XLYOFNOQVPJJNP-UHFFFAOYSA-N,962
+cortisol,Cortisol,C21H30O5,JYGXADMDTFJGBT-VWUMJDOOSA-N,5754
+prednisolone,Prednisolone,C21H28O5,OIGNJSKKLXVSLS-VWUMJDOOSA-N,5755
+aldosterone,Aldosterone,C21H28O5,PQSUYGKTWSAVDQ-ZVIOFETBSA-N,5839
+dexamethasone,Dexamethasone,C22H29FO5,UREBDLICKHMUKA-CXSFZGCWSA-N,5743
+testosterone,Testosterone,C19H28O2,MUMGGOZAMZWBJJ-DYKIIFRCSA-N,6013
+dhea,Dehydroepiandrosterone,C19H28O2,FMGSKLZLMKYGDP-USOAJAOKSA-N,5881
+androstenedione,Androstenedione,C19H26O2,AEMFNILZOJDQLW-QAGGRKNESA-N,6128
+estradiol,Estradiol,C18H24O2,VOXZDWNPVJITMN-ZBRFXRBCSA-N,5757
+progesterone,Progesterone,C21H30O2,RJKFOVLPORLFTN-LEKSSAKUSA-N,5994
+thyroxine,Thyroxine (T4),C15H11I4NO4,XUIIKFGFIJCVMT-LBPRGKRZSA-N,5819
+triiodothyronine,Triiodothyronine (T3),C15H12I3NO4,AUYYCJSJGJYCDS-LBPRGKRZSA-N,5920
+folate,Folic acid,C19H19N7O6,OVBPIULPVIDEAO-LBPRGKRZSA-N,6037
+cobalamin,Cyanocobalamin,C63H88CoN14O14P,FDJOLVPMNUYSCM-WZHZPDAFSA-L,5311498
+ascorbic_acid,L-Ascorbic acid,C6H8O6,CIWBSHSKHKDKBQ-JLAZNSOCSA-N,54670067
+calcifediol,25-Hydroxyvitamin D3,C27H44O2,JWUBBDSIWDLEOM-DTOXIADCSA-N,5283731
+ethanol,Ethanol,C2H6O,LFQSCWFLJHTTHZ-UHFFFAOYSA-N,702
+methanol,Methanol,CH4O,OKKJLVBELUTLKV-UHFFFAOYSA-N,887
+ethylene_glycol,Ethylene glycol,C2H6O2,LYCAIKOWRPUZTN-UHFFFAOYSA-N,174
+acetone,Acetone,C3H6O,CSCPPACGZOOCGX-UHFFFAOYSA-N,180
+acetaminophen,Acetaminophen,C8H9NO2,RZVAJINKPMORJF-UHFFFAOYSA-N,1983
+salicylic_acid,Salicylic acid,C7H6O3,YGSDEFSMJLZEOE-UHFFFAOYSA-N,338
+ibuprofen,Ibuprofen,C13H18O2,HEFNNWSXXWATRW-UHFFFAOYSA-N,3672
+caffeine,Caffeine,C8H10N4O2,RYYVLZVUVIJVGH-UHFFFAOYSA-N,2519
+theophylline,Theophylline,C7H8N4O2,ZFXYFBGIUFBOJW-UHFFFAOYSA-N,2153
+phenytoin,Phenytoin,C15H12N2O2,CXOFVDLJLONNDW-UHFFFAOYSA-N,1775
+phenobarbital,Phenobarbital,C12H12N2O3,DDBREPKUVSBGFI-UHFFFAOYSA-N,4763
+valproic_acid,Valproic acid,C8H16O2,NIJJYAXOARWZEE-UHFFFAOYSA-N,3121
+carbamazepine,Carbamazepine,C15H12N2O,FFGPTBGBLSHEPO-UHFFFAOYSA-N,2554
+lamotrigine,Lamotrigine,C9H7Cl2N5,PYZRQGJRPPTADH-UHFFFAOYSA-N,3878
+levetiracetam,Levetiracetam,C8H14N2O2,HPHUVLMMVZITSG-ZCFIWIBFSA-N,441341
+metformin,Metformin,C4H11N5,XZWYZXLIPXDOLR-UHFFFAOYSA-N,4091
+warfarin,Warfarin,C19H16O4,PJVWKTKQMONHTI-UHFFFAOYSA-N,54678486
+digoxin,Digoxin,C41H64O14,LTMHDMANZUZIPE-PUGKRICDSA-N,2724385
+methotrexate,Methotrexate,C20H22N8O5,FBOZXECLQNJBKD-ZDUSSCGKSA-N,126941
+ciclosporin,Ciclosporin A,C62H111N11O12,PMATZTZNYRCHOR-CGLBZJNRSA-N,5284373
+tacrolimus,Tacrolimus,C44H69NO12,QJJXYPPXXYFBGM-LFZNUXCKSA-N,445643
+vancomycin,Vancomycin,C66H75Cl2N9O24,MYPYJXKWCTUITO-LYRMYLQWSA-N,14969
+morphine,Morphine,C17H19NO3,BQJCRHHNABKAKU-KBQPJGBKSA-N,5288826
+codeine,Codeine,C18H21NO3,OROGSEYTTFOCAN-DNJOTXNNSA-N,5284371
+")
+
+## Things with no usable formula, so an external citation is required.
+## Things with no usable formula. `urea_nitrogen` is here because BUN is
+## reported as the mass of nitrogen, not of urea: treating "BUN" as a synonym
+## of urea would convert mg/dL with urea's molar mass (60.056) and be wrong by
+## a factor of 2.14. It is a different substance, not a different name.
+proteins <- data.frame(
+  stringsAsFactors = FALSE,
+  substance_id = c("insulin", "c_peptide", "albumin", "hba1c", "lipoprotein_a",
+                   "urea_nitrogen"),
+  name = c("Insulin (human)", "C-peptide (human)", "Serum albumin (human)",
+           "Haemoglobin A1c", "Lipoprotein(a)", "Urea nitrogen"),
+  formula = NA_character_, inchikey = NA_character_,
+  pubchem_cid = NA_character_)
+
+molecules$cas <- NA_character_
+molecules$cas[molecules$substance_id == "glucose"] <- "50-99-7"
+molecules$cas[molecules$substance_id == "cholesterol"] <- "57-88-5"
+molecules$cas[molecules$substance_id == "water"] <- "7732-18-5"
+molecules$cas[molecules$substance_id == "carbon_dioxide"] <- "124-38-9"
+molecules$cas[molecules$substance_id == "ethanol"] <- "64-17-5"
+proteins$cas <- NA_character_
+
+cols <- c("substance_id", "name", "formula", "cas", "inchikey", "pubchem_cid")
+molecules <- molecules[, cols]
+proteins <- proteins[, cols]
 
 ## Build an elements-only system so formulae can be evaluated.
 substance_system("bootstrap",
-                 substances = rbind(element_substances, molecules),
+                 substances = rbind(element_substances, molecules, proteins),
                  synonyms = element_synonyms,
                  parameters = element_parameters,
                  sources = sources)
 
-has_formula <- !is.na(molecules$formula)
 computed <- data.frame(
   stringsAsFactors = FALSE,
-  substance_id = molecules$substance_id[has_formula],
+  substance_id = molecules$substance_id,
   parameter    = "molar_mass",
   value        = signif(as.numeric(molar_mass_from_formula(
-                   molecules$formula[has_formula], system = "bootstrap")), 7),
+                   molecules$formula, system = "bootstrap")), 7),
   unit         = "g/mol",
   status       = "ok",
   source_id    = "computed-from-formula",
-  note         = paste0(molecules$formula[has_formula],
-                        " from CIAAW 2021 atomic weights"))
+  note         = paste0(molecules$formula, " from CIAAW 2021 atomic weights"))
 
 ## Parameters that cannot be computed.
 literal <- function(id, parameter, value, unit, status, source_id, note = NA)
@@ -159,13 +254,20 @@ extra_parameters <- rbind(
   # valences, for mEq conversions
   literal("sodium", "valence", 1, "eq/mol", "ok", "ciaaw-2021", "Na+"),
   literal("potassium", "valence", 1, "eq/mol", "ok", "ciaaw-2021", "K+"),
+  literal("lithium", "valence", 1, "eq/mol", "ok", "ciaaw-2021", "Li+"),
   literal("chlorine", "valence", 1, "eq/mol", "ok", "ciaaw-2021",
           "Cl-; magnitude of the charge"),
   literal("calcium", "valence", 2, "eq/mol", "ok", "ciaaw-2021", "Ca2+"),
   literal("magnesium", "valence", 2, "eq/mol", "ok", "ciaaw-2021", "Mg2+"),
+  literal("zinc", "valence", 2, "eq/mol", "ok", "ciaaw-2021", "Zn2+"),
+  literal("copper", "valence", 2, "eq/mol", "ok", "ciaaw-2021", "Cu2+"),
   literal("bicarbonate", "valence", 1, "eq/mol", "ok", "computed-from-formula",
           "HCO3-"),
-  # proteins
+  # a valence that cannot be stated without the oxidation state
+  literal("iron", "valence", NA, "eq/mol", "disputed", NA,
+          paste("iron circulates as both Fe2+ and Fe3+, so mEq is ambiguous",
+                "unless the oxidation state is specified")),
+  # proteins and activity standards
   literal("insulin", "molar_mass", 5807.57, "g/mol", "ok", "uniprot-P01308",
           "mature A+B chains with three disulfide bonds"),
   literal("insulin", "activity", 6.00e-9, "mol/IU", "ok", "who-is-66-304",
@@ -175,12 +277,17 @@ extra_parameters <- rbind(
           "human C-peptide, 31 residues"),
   literal("albumin", "molar_mass", 66437, "g/mol", "ok", "uniprot-P02768",
           "mature chain, 585 residues"),
+  literal("urea_nitrogen", "molar_mass", 28.014, "g/mol", "ok", "ciaaw-2021",
+          paste("2 x N (14.007) per urea molecule. BUN is reported as nitrogen",
+                "mass, so this converts a BUN mass concentration to a urea",
+                "molar concentration: 1 mg/dL BUN = 0.357 mmol/L urea")),
   # a conversion that should not be made
   literal("lipoprotein_a", "molar_mass", NA, "g/mol", "disputed", NA,
           paste("apo(a) isoform size varies between individuals, so there is no",
                 "valid fixed mass<->molar factor; measure nmol/L directly")))
 
-parameters <- rbind(element_parameters, computed, extra_parameters)
+parameters <- rbind(element_parameters, element_density, computed,
+                    extra_parameters)
 
 ## ------------------------------------------------------------ conversions ---
 conversions <- data.frame(
@@ -203,6 +310,8 @@ syn <- function(id, ...) data.frame(stringsAsFactors = FALSE,
 
 molecule_synonyms <- rbind(
   syn("glucose", "Glucose", "Blood glucose", "Fasting plasma glucose", "FPG"),
+  syn("galactose", "Galactose"),
+  syn("fructose", "Fructose"),
   syn("cholesterol", "Cholesterol", "Total Cholesterol", "HDL Cholesterol",
       "LDL Cholesterol", "Cholesterol (HDL)", "Cholesterol (LDL)", "HDL-C",
       "LDL-C", "Non-HDL Cholesterol"),
@@ -211,26 +320,60 @@ molecule_synonyms <- rbind(
       "Total Bilirubin"),
   syn("3_hydroxybutyrate", "3 hydroxy-butyrate (BOHB)", "BOHB",
       "beta-hydroxybutyrate", "3-hydroxybutyrate"),
+  syn("acetoacetic_acid", "Acetoacetate"),
   syn("c_peptide", "C-peptide", "C peptide"),
   syn("insulin", "Insulin"),
   syn("albumin", "Albumin", "Serum albumin"),
   syn("hba1c", "HbA1c", "Hemoglobin A1c", "Haemoglobin A1c", "A1c"),
   syn("lipoprotein_a", "Lipoprotein (a) [Lp(a)]", "Lp(a)", "Lipoprotein (a)"),
-  syn("creatinine", "Creatinine"),
-  syn("urea", "Urea", "Blood urea nitrogen", "BUN"),
+  syn("creatinine", "Creatinine"), syn("creatine", "Creatine"),
+  syn("urea", "Urea"),
+  syn("urea_nitrogen", "BUN", "Blood urea nitrogen", "Urea nitrogen"),
   syn("uric_acid", "Uric acid", "Urate"),
   syn("lactic_acid", "Lactate", "Lactic acid"),
+  syn("pyruvic_acid", "Pyruvate"), syn("oxalic_acid", "Oxalate"),
+  syn("citric_acid", "Citrate"), syn("glycerol", "Glycerol"),
+  syn("homocysteine", "Homocysteine"), syn("ammonia", "Ammonia"),
   syn("bicarbonate", "Bicarbonate", "HCO3"),
   syn("carbon_dioxide", "Carbon dioxide", "CO2"),
+  syn("cortisol", "Cortisol"), syn("prednisolone", "Prednisolone"),
+  syn("aldosterone", "Aldosterone"), syn("dexamethasone", "Dexamethasone"),
+  syn("testosterone", "Testosterone"),
+  syn("dhea", "DHEA", "Dehydroepiandrosterone"),
+  syn("androstenedione", "Androstenedione"),
+  syn("estradiol", "Estradiol", "Oestradiol", "E2"),
+  syn("progesterone", "Progesterone"),
+  syn("thyroxine", "Thyroxine", "T4", "Free T4", "FT4"),
+  syn("triiodothyronine", "Triiodothyronine", "T3", "Free T3", "FT3"),
+  syn("folate", "Folate", "Folic acid"),
+  syn("cobalamin", "Vitamin B12", "B12", "Cobalamin", "Cyanocobalamin"),
+  syn("ascorbic_acid", "Vitamin C", "Ascorbate", "Ascorbic acid"),
+  syn("calcifediol", "25-hydroxyvitamin D", "25-OH vitamin D", "Vitamin D"),
+  syn("ethanol", "Ethanol", "Alcohol"), syn("methanol", "Methanol"),
+  syn("ethylene_glycol", "Ethylene glycol"), syn("acetone", "Acetone"),
+  syn("acetaminophen", "Acetaminophen", "Paracetamol"),
+  syn("salicylic_acid", "Salicylate", "Salicylic acid"),
+  syn("ibuprofen", "Ibuprofen"), syn("caffeine", "Caffeine"),
+  syn("theophylline", "Theophylline"), syn("phenytoin", "Phenytoin"),
+  syn("phenobarbital", "Phenobarbital", "Phenobarbitone"),
+  syn("valproic_acid", "Valproate", "Valproic acid"),
+  syn("carbamazepine", "Carbamazepine"), syn("lamotrigine", "Lamotrigine"),
+  syn("levetiracetam", "Levetiracetam"), syn("metformin", "Metformin"),
+  syn("warfarin", "Warfarin"), syn("digoxin", "Digoxin"),
+  syn("methotrexate", "Methotrexate"),
+  syn("ciclosporin", "Ciclosporin", "Cyclosporine", "Cyclosporin A"),
+  syn("tacrolimus", "Tacrolimus"), syn("vancomycin", "Vancomycin"),
+  syn("morphine", "Morphine"), syn("codeine", "Codeine"),
   syn("sodium", "Sodium"), syn("potassium", "Potassium"),
   syn("calcium", "Calcium"), syn("magnesium", "Magnesium"),
-  syn("chlorine", "Chloride"))
+  syn("chlorine", "Chloride"), syn("lithium", "Lithium"),
+  syn("iron", "Iron"), syn("zinc", "Zinc"), syn("copper", "Copper"))
 
 synonyms <- rbind(element_synonyms, molecule_synonyms)
 synonyms <- synonyms[!duplicated(tolower(synonyms$synonym)), ]
 
 ## ------------------------------------------------------------------ write ---
-substances <- rbind(element_substances, molecules)
+substances <- rbind(element_substances, molecules, proteins)
 
 write_registry <- function(x, file) {
   utils::write.csv(x, file.path(out_dir, file), row.names = FALSE, na = "")

@@ -46,17 +46,43 @@ yet agreed upstream — the API should be expected to change.
   `U` is `umol/min`; `IU` is a separate base dimension, since the WHO
   biological-standard unit is not the enzyme unit.
 
+## Documentation
+
+* `vignette("substances")` walks through the problem, the udunits demonstration,
+  per-element substances, the bridge parameters including density and molar
+  volume, affine conversions, substance identity, citations and systems.
+
 ## Reference data (#2)
 
 * Five CSVs in `inst/extdata`, with a `source_id` on every value and a `status`
   column so a disputed conversion can be recorded and refused rather than
-  guessed (Lp(a) mass/molar is the case in point).
+  guessed. Lp(a) mass/molar is one case; iron's valence is another, withheld
+  because iron circulates as both Fe2+ and Fe3+ while its other parameters stay
+  usable.
 * Molar masses of ordinary molecules are **computed** from their formula and the
   atomic weights by `molar_mass_from_formula()`, not transcribed, so a reviewer
-  can re-derive every one. A test recomputes them all.
-* `chemical_elements.csv` is migrated into the parameter table. The twenty
-  elements clinical data actually uses carry CIAAW 2021 values; the rest keep
-  their inherited values, flagged in `note` as predating the 2009 IUPAC revision.
+  can re-derive every one. A test recomputes them all, and a second checks a
+  sample against PubChem, including formulae with iodine, cobalt, chlorine,
+  fluorine and sulfur.
+* 61 substances now carry a formula-derived molar mass, covering common
+  chemistry panels, lipids, hormones, vitamins, therapeutic drug monitoring and
+  toxicology. 15 published conventional-to-SI factors are pinned as a regression
+  corpus.
+* **Densities of 95 elements at their standard state**, from the PubChem
+  periodic table, with the standard state and reference conditions in the note
+  because a gas density is meaningless without them. Density bridges mass and
+  volume on its own, and with the atomic weight it gives the molar volume:
+  gold 10.2 cm3/mol, sodium 23.7 cm3/mol, helium 22.4 L/mol at STP, hydrogen
+  11.2 L/mol of atoms.
+* `chemical_elements.csv` is migrated into the parameter table. The 21 elements
+  clinical data actually uses carry CIAAW 2021 values; the rest keep their
+  inherited values, flagged in `note` as predating the 2009 IUPAC revision.
+* Blood urea nitrogen is registered as a **separate substance** from urea, not a
+  synonym. BUN is reported as the mass of nitrogen, so using urea's molar mass
+  would be wrong by a factor of 2.14 — a substance-identity error of exactly the
+  kind this package exists to catch.
+* `substance_info()` now prints each parameter's note, which is where reference
+  conditions and caveats live.
 
 ## Interoperating with plain `units` quantities
 

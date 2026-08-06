@@ -196,3 +196,29 @@ test_that("substance_convertible() sees explicit conversions too", {
   expect_true(substance_convertible("%", "mmol/mol", "hba1c"))
   expect_true(substance_convertible("mmol/mol", "%", "hba1c"))
 })
+
+test_that("published factors for the wider clinical set are reproduced", {
+  # each of these is a conventional-to-SI factor in common clinical use
+  cases <- list(
+    list("Cortisol",     "ug/dL", "nmol/L", 27.59),
+    list("Testosterone", "ng/dL", "nmol/L", 0.0347),
+    list("Estradiol",    "pg/mL", "pmol/L", 3.671),
+    list("Thyroxine",    "ug/dL", "nmol/L", 12.87),
+    list("Uric acid",    "mg/dL", "umol/L", 59.48),
+    list("Urea",         "mg/dL", "mmol/L", 0.1665),
+    list("BUN",          "mg/dL", "mmol/L", 0.357),
+    list("Ammonia",      "ug/dL", "umol/L", 0.5872),
+    list("Digoxin",      "ng/mL", "nmol/L", 1.281),
+    list("Vitamin D",    "ng/mL", "nmol/L", 2.496),
+    list("Phenytoin",    "ug/mL", "umol/L", 3.964),
+    list("Caffeine",     "ug/mL", "umol/L", 5.15),
+    list("Homocysteine", "mg/L",  "umol/L", 7.397),
+    list("Folate",       "ng/mL", "nmol/L", 2.266),
+    list("Ethanol",      "mg/dL", "mmol/L", 0.2171))
+  for (cs in cases) {
+    got <- as.numeric(set_units(substance(1, cs[[2]], cs[[1]]), cs[[3]],
+                                mode = "standard"))
+    expect_equal(got, cs[[4]], tolerance = 5e-3,
+                 info = paste(cs[[1]], cs[[2]], "->", cs[[3]]))
+  }
+})

@@ -254,7 +254,7 @@ print.substance_info <- function(x, ...) {
     cat("  formula: ", x$substance$formula, "\n", sep = "")
   if (nrow(x$parameters)) {
     cat("  parameters:\n")
-    for (i in seq_len(nrow(x$parameters)))
+    for (i in seq_len(nrow(x$parameters))) {
       cat(sprintf("    %-11s %-12s %-9s %s\n",
                   x$parameters$parameter[i],
                   format(x$parameters$value[i]),
@@ -262,6 +262,12 @@ print.substance_info <- function(x, ...) {
                   paste0("[", x$parameters$status[i], "] ",
                          ifelse(is.na(x$parameters$citation[i]), "",
                                 x$parameters$citation[i]))))
+      # the note is where reference conditions and caveats live, so a value is
+      # not really reviewable without it
+      if (!is.na(x$parameters$note[i]) && nzchar(x$parameters$note[i]))
+        cat(strwrap(x$parameters$note[i], width = 78, prefix = "      ",
+                    initial = "      "), sep = "\n")
+    }
   }
   if (nrow(x$conversions)) {
     cat("  conversions:\n")

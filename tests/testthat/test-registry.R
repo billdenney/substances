@@ -62,7 +62,10 @@ test_that("registry validation rejects malformed tables", {
 
 test_that("substance_parameters() omits non-ok entries", {
   expect_length(substance_parameters("lipoprotein_a"), 0L)
-  expect_named(substance_parameters("sodium"), c("molar_mass", "valence"),
+  expect_named(substance_parameters("sodium"),
+               c("molar_mass", "density", "valence"), ignore.order = TRUE)
+  # iron's valence is disputed, so it is withheld while the rest are returned
+  expect_named(substance_parameters("iron"), c("molar_mass", "density"),
                ignore.order = TRUE)
 })
 
@@ -127,4 +130,15 @@ test_that("a system object can be passed instead of its name", {
 test_that("setting an unknown default system is refused", {
   expect_error(substance_set_default_system("nope"),
                "no conversion system named", fixed = TRUE)
+})
+
+test_that("substance_info() prints the note, where caveats and conditions live", {
+  out <- paste(capture.output(print(substance_info("hydrogen"))), collapse = "\n")
+  expect_match(out, "density", fixed = TRUE)
+  expect_match(out, "STP", fixed = TRUE)          # reference conditions
+  expect_match(out, "standard state gas", fixed = TRUE)
+
+  out2 <- paste(capture.output(print(substance_info("Lp(a)"))), collapse = "\n")
+  expect_match(out2, "disputed", fixed = TRUE)
+  expect_match(out2, "isoform size varies", fixed = TRUE)
 })

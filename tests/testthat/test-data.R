@@ -131,3 +131,68 @@ test_that("the loaded default system is the one the CSVs describe", {
   expect_equal(substance_default_system(), "substances")
   expect_gt(nrow(sys$substances), 100L)   # elements plus the clinical set
 })
+
+test_that("element densities are registered with a usable unit", {
+  d <- sys$parameters[sys$parameters$parameter == "density", ]
+  expect_gt(nrow(d), 90L)
+  expect_true(all(d$unit == "g/mL"))
+  expect_true(all(d$value > 0))
+  expect_true(all(d$source_id == "pubchem-periodictable"))
+  # a gas density is meaningless without its reference conditions
+  expect_true(all(grepl("standard state", d$note)))
+  expect_true(any(grepl("STP", d$note)))
+})
+
+test_that("density and molar mass together give the right molar volume", {
+  # solid metals: literature molar volumes
+  expect_equal(as.numeric(set_units(substance(1, "mol", "sodium"), "cm^3")),
+               23.7, tolerance = 1e-2)
+  expect_equal(as.numeric(set_units(substance(1, "mol", "iron"), "cm^3")),
+               7.09, tolerance = 1e-2)
+  expect_equal(as.numeric(set_units(substance(1, "mol", "gold"), "cm^3")),
+               10.21, tolerance = 1e-2)
+
+  # a monatomic gas at STP occupies the full molar volume
+  expect_equal(as.numeric(set_units(substance(1, "mol", "helium"), "L")),
+               22.4, tolerance = 5e-2)
+  # a diatomic one occupies half of it per mole of ATOMS, which is what the
+  # atomic molar mass and the bulk density together imply
+  expect_equal(as.numeric(set_units(substance(1, "mol", "hydrogen"), "L")),
+               11.2, tolerance = 5e-2)
+  expect_equal(as.numeric(set_units(substance(1, "mol", "oxygen"), "L")),
+               11.2, tolerance = 5e-2)
+})
+
+test_that("density alone bridges mass and volume", {
+  expect_equal(as.numeric(set_units(substance(19.3, "g", "gold"), "cm^3")),
+               1, tolerance = 1e-2)
+})
+
+test_that("BUN and urea are different substances, not synonyms", {
+  # BUN is reported as the mass of nitrogen, so using urea's molar mass would
+  # be wrong by a factor of 2.14
+  expect_equal(substance_resolve("BUN"), "urea_nitrogen")
+  expect_equal(substance_resolve("Urea"), "urea")
+  expect_equal(as.numeric(set_units(substance(1, "mg/dL", "BUN"), "mmol/L")),
+               0.357, tolerance = 1e-3)
+  expect_equal(as.numeric(set_units(substance(1, "mg/dL", "Urea"), "mmol/L")),
+               0.1665, tolerance = 1e-3)
+  expect_error(substance(1, "mmol/L", "BUN") + substance(1, "mmol/L", "urea"),
+               "different substances", fixed = TRUE)
+})
+
+test_that("isomers share a molar mass but stay distinct substances", {
+  masses <- vapply(c("glucose", "galactose", "fructose"),
+                   function(id) as.numeric(substance_parameters(id)$molar_mass),
+                   numeric(1))
+  expect_equal(unname(masses), rep(180.156, 3), tolerance = 1e-4)
+  expect_error(substance(1, "mmol/L", "glucose") +
+                 substance(1, "mmol/L", "galactose"),
+               "different substances", fixed = TRUE)
+})
+
+test_that("a valence that needs an oxidation state is refused", {
+  expect_equal(substance_parameters("iron")$valence, NULL)
+  expect_error(set_units(substance(1, "mg/dL", "iron"), "meq/L"),
+               "cannot convert", fixed = TRUE)
+})

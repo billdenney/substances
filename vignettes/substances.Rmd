@@ -1,0 +1,326 @@
+---
+title: "Substance-aware unit conversions"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Substance-aware unit conversions}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+```{r setup}
+library(substances)
+```
+
+## The gap this fills
+
+`units` converts between commensurable units. It will not convert mg/dL to
+mmol/L, and it is right not to: those measure different dimensions, and the
+bridge between them is the analyte's molar mass. A unit string has nowhere to
+put one.
+
+```{r}
+tryCatch(units::set_units(units::set_units(100, "mg/dL"), "mmol/L"),
+         error = function(e) conditionMessage(e))
+```
+
+Attach the substance and it resolves:
+
+```{r}
+set_units(substance(100, "mg/dL", "glucose"), "mmol/L")
+```
+
+## Why the substance cannot live in the unit
+
+The tempting shortcut is to define per-substance units in udunits. It does not
+work, and the way it fails is worth seeing, because it is what shaped the rest
+of the design.
+
+Define them relative to `mol` and every substance becomes mutually convertible:
+
+```{r}
+units::install_unit("mol_glucose", "0.0055507 mol")
+units::install_unit("mol_sodium",  "0.0434978 mol")
+
+units::set_units(1, "mol_glucose") + units::set_units(1, "mol_sodium")
+```
+
+A mole of glucose plus a mole of sodium is not 8.84 of anything. Nothing warns,
+because as far as udunits is concerned these are two scalings of one dimension.
+
+```{r}
+units::remove_unit("mol_glucose"); units::remove_unit("mol_sodium")
+```
+
+Define them as *base* units instead and the isolation is perfect, but nothing
+converts:
+
+```{r}
+units::install_unit("mol_glucose"); units::install_unit("g_glucose")
+c(across_substances = units::ud_are_convertible("mol_glucose", "mol"),
+  within_substance  = units::ud_are_convertible("mol_glucose", "g_glucose"))
+units::remove_unit("mol_glucose"); units::remove_unit("g_glucose")
+```
+
+Adding the definition that would make the second `TRUE` is exactly what
+re-creates the first. **Inside udunits, isolation and conversion are mutually
+exclusive.** So here the substance is a property of the vector, and the registry
+supplies the quantities that bridge dimensions `units` cannot relate on its own.
+
+## A different substance per element
+
+Long-format laboratory data has one analyte per row, so that is the ordinary
+case rather than an edge case. The substance is a field of the vector, and it
+survives subsetting, reordering and data-frame operations.
+
+```{r}
+x <- substance(c(100, 140, 90), "mg/dL", c("glucose", "sodium", "glucose"))
+x
+substance_of(x[2:3])
+
+d <- data.frame(id = 1:3, result = x)
+d[d$id > 1, ]
+```
+
+Every element converts by its own substance, in one call:
+
+```{r}
+set_units(x, "mmol/L")
+```
+
+Quantities of different substances do not combine:
+
+```{r}
+tryCatch(substance(1, "mmol/L", "glucose") + substance(1, "mmol/L", "sodium"),
+         error = function(e) conditionMessage(e))
+```
+
+When the unit varies by row too — which is how the data usually arrives — use
+`mixed_substances()`. Its job is to become a homogeneous `substance`, which is
+where arithmetic happens.
+
+```{r}
+m <- mixed_substances(c(100, 5.5, 140),
+                      c("mg/dL", "mmol/L", "mg/dL"),
+                      c("glucose", "glucose", "sodium"))
+m
+set_units(m, "mmol/L")
+```
+
+## Conversions are derived, not tabulated
+
+A substance carries parameters that are themselves `units` quantities. A
+conversion is the product of small integer powers of them that makes the two
+units commensurable. One molar mass therefore serves every unit pair it can
+bridge, rather than needing a table row each:
+
+```{r}
+set_units(substance(1, "g", "glucose"),     "mol")
+set_units(substance(1, "ug/L", "glucose"),  "nmol/L")
+set_units(substance(1, "mg/dL", "glucose"), "mmol/L")
+```
+
+Where `units` can already do the job, nothing here is involved at all:
+
+```{r}
+set_units(substance(1, "mg/dL", "albumin"), "g/L")
+```
+
+### Parameters compose
+
+Sodium in mEq/L needs the molar mass *and* the valence, and the search finds
+both:
+
+```{r}
+set_units(substance(1, "mg/dL", "sodium"), "meq/L")
+```
+
+### Density, and the molar volume it implies
+
+Densities of the elements at their standard state are registered, so mass and
+volume are bridged too:
+
+```{r}
+set_units(substance(19.3, "g", "gold"), "cm^3")
+```
+
+Combined with the atomic weight, density gives the molar volume — molar mass
+times the reciprocal of density, a two-parameter path:
+
+```{r}
+set_units(substance(1, "mol", "gold"), "cm^3")
+set_units(substance(1, "mol", "sodium"), "cm^3")
+```
+
+Gas densities are recorded at STP, and the arithmetic comes out where it should.
+A monatomic gas occupies the full molar volume; a diatomic one occupies half of
+it *per mole of atoms*, because the registry's molar mass is atomic while the
+density is of the bulk material:
+
+```{r}
+set_units(substance(1, "mol", "helium"),   "L")
+set_units(substance(1, "mol", "hydrogen"), "L")
+```
+
+That is not a fudge: a mole of H atoms is half a mole of H~2~, which is half of
+22.4 L. Mass is conserved whatever the molecular form, so a bulk density and an
+atomic molar mass stay consistent. The reference conditions matter enormously
+for a gas, so they are recorded rather than assumed:
+
+```{r}
+substance_info("hydrogen")
+```
+
+### Not everything is a molar mass
+
+Insulin's mU/L to pmol/L is fixed by the WHO biological standard, not by
+insulin's mass. The registry records it as an `activity`, and insulin's molar
+mass — which it also has — plays no part:
+
+```{r}
+set_units(substance(1, "mIU/L", "insulin"), "pmol/L")
+```
+
+### Not everything is multiplicative
+
+HbA1c is affine. It is stored in the direction NGSP publishes it, with the
+inverse derived rather than transcribed:
+
+```{r}
+set_units(substance(c(6.5, 7.0), "%", "hba1c"), "mmol/mol")
+```
+
+`%` and `mmol/mol` are both dimensionless, so `units` would happily convert
+between them by a factor of 10 and produce a plausible, wrong number. Registered
+conversions are therefore consulted *before* the dimensional path.
+
+## Substance identity is the point
+
+Three sugars share a formula and a molar mass, and are not interchangeable:
+
+```{r}
+vapply(c("glucose", "galactose", "fructose"),
+       function(s) as.numeric(substance_parameters(s)$molar_mass), numeric(1))
+
+tryCatch(substance(1, "mmol/L", "glucose") + substance(1, "mmol/L", "galactose"),
+         error = function(e) conditionMessage(e))
+```
+
+A subtler case: blood urea nitrogen is reported as the mass of *nitrogen*, not
+of urea. Treating "BUN" as another name for urea would apply urea's molar mass
+and be wrong by a factor of 2.14. They are different substances.
+
+```{r}
+set_units(substance(1, "mg/dL", "BUN"),  "mmol/L")
+set_units(substance(1, "mg/dL", "urea"), "mmol/L")
+```
+
+Names and synonyms resolve case-insensitively, so study-specific labels reach
+the right entry:
+
+```{r}
+substance_resolve(c("LDL Cholesterol", "HDL-C", "  GLUCOSE ", "Na", "T4"))
+```
+
+## Every value carries a citation
+
+The reference data ships as CSV with a `source_id` on each value, so a reviewer
+can check any number without reading code:
+
+```{r}
+substance_info("LDL Cholesterol")
+```
+
+A `status` column lets the registry record that a conversion is contested,
+rather than leaving it out — which reads as "not looked up yet" — or including
+it, which reads as "fine".
+
+```{r}
+tryCatch(set_units(substance(50, "mg/dL", "Lp(a)"), "nmol/L"),
+         error = function(e) conditionMessage(e))
+```
+
+Lp(a) has no molar mass here because apo(a) isoform size varies between
+individuals, so no fixed mass-to-molar factor is valid. Iron's valence is
+withheld for a similar reason — it circulates as both Fe^2+^ and Fe^3+^, so mEq
+is ambiguous — while its other parameters remain usable:
+
+```{r}
+names(substance_parameters("iron"))
+```
+
+Molar masses of ordinary molecules are computed from the formula rather than
+transcribed, so every one of them is re-derivable:
+
+```{r}
+molar_mass_from_formula(c("C6H12O6", "C27H46O", "C15H11I4NO4"))
+```
+
+## Arithmetic
+
+Concentration times volume is an amount, still of the same substance. Dividing
+two quantities of the same substance cancels it, leaving an ordinary `units`
+quantity:
+
+```{r}
+conc <- substance(2, "mmol/L", "glucose")
+conc * units::set_units(3, "L")
+
+substance(6, "mmol/L", "glucose") / substance(2, "mmol/L", "glucose")
+```
+
+This interoperation needs R >= 4.3.0, for `chooseOpsMethod()`. Below that R
+refuses to choose between the `substance` and `units` operator methods and the
+expression fails before either runs.
+
+Only `*` and `/` are defined against a bare `units` quantity: adding something
+with no substance to something with one is refused rather than guessed at.
+
+## Isolated conversion systems
+
+Because the substance lives in R data rather than global udunits state, several
+registries coexist in one session. A project can add or override entries without
+touching anyone else's session, and vectors from different systems refuse to
+combine.
+
+```{r}
+substance_system(
+  "my_project", inherit = "substances",
+  substances = data.frame(substance_id = "widgetol", name = "Widgetol"),
+  parameters = data.frame(substance_id = "widgetol", parameter = "molar_mass",
+                          value = 100, unit = "g/mol", status = "ok"))
+
+set_units(substance(1, "mg/dL", "widgetol", system = "my_project"), "mmol/L")
+
+# the default registry is untouched
+tryCatch(substance(1, "mg/dL", "widgetol"),
+         error = function(e) conditionMessage(e))
+```
+
+## What is out of scope
+
+Normalising unit **strings** — `ng/ml` versus `ng/mL`, `IU/L` versus `U/L`,
+`frac of 1` versus `fraction of 1` — is per-source data cleaning and belongs in
+the consuming package. Unrecognised unit strings are rejected rather than
+guessed at:
+
+```{r}
+tryCatch(mixed_substances(1, "frac of 1", "glucose"),
+         error = function(e) conditionMessage(e))
+```
+
+Conversions `units` already performs are also out of scope. `mg/dL` to `g/L` is
+dimensional. So is enzyme activity, once `U` is defined as µmol/min — which this
+package does at load, because udunits lacks it:
+
+```{r}
+units::set_units(units::set_units(1, "U/L"), "ukat/L")
+```
+
+That conversion is the same for every enzyme, so it needs no substance and this
+package adds nothing to it. Note the contrast with `IU` in the WHO sense, as
+used for insulin above: same string in clinical data, genuinely different
+things, which is why they are separate dimensions here.

@@ -72,3 +72,26 @@ test_that("an element with no registered molar mass is reported", {
   expect_error(molar_mass_from_formula("C", system = "no_mass"),
                "no atomic weight registered", fixed = TRUE)
 })
+
+test_that("formulae with unusual elements parse and agree with PubChem", {
+  # exercises I, Co, Cl, F, S and a formula written hydrogen-first
+  reference <- c("C15H11I4NO4" = 776.87,        # thyroxine, 4 iodine
+                 "C63H88CoN14O14P" = 1355.4,    # cobalamin, cobalt not C+o
+                 "C66H75Cl2N9O24" = 1449.2,     # vancomycin, chlorine
+                 "C22H29FO5" = 392.5,           # dexamethasone, fluorine
+                 "C9H7Cl2N5" = 256.09,          # lamotrigine
+                 "C4H9NO2S" = 135.19,           # homocysteine, sulfur
+                 "C62H111N11O12" = 1202.6,      # ciclosporin
+                 "H3N" = 17.031)                # ammonia, not N-first
+  for (f in names(reference)) {
+    got <- as.numeric(molar_mass_from_formula(f))
+    expect_equal(got, reference[[f]], tolerance = 1e-3, info = f)
+  }
+})
+
+test_that("Co is read as cobalt, not carbon followed by oxygen", {
+  # the one place a two-letter symbol could be mis-split
+  co <- as.numeric(molar_mass_from_formula("Co"))
+  expect_equal(co, 58.933194, tolerance = 1e-6)
+  expect_false(isTRUE(all.equal(co, as.numeric(molar_mass_from_formula("CO")))))
+})

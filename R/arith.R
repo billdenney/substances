@@ -38,15 +38,8 @@ vec_arith.substance <- function(op, x, y, ...) UseMethod("vec_arith.substance", 
 
 #' @export
 #' @method vec_arith.substance default
-vec_arith.substance.default <- function(op, x, y, ...) {
-  # R refuses to dispatch `substance <op> units` at all, so this branch is only
-  # reached when vec_arith() is called directly; point at the way that works.
-  if (inherits(y, "units"))
-    stop("use substance_scale() to combine a `substance` with a `units` ",
-         "quantity; `", op, "` cannot dispatch between the two classes.",
-         call. = FALSE)
+vec_arith.substance.default <- function(op, x, y, ...)
   vctrs::stop_incompatible_op(op, x, y)
-}
 
 #' @export
 #' @method vec_arith.substance MISSING
@@ -111,37 +104,63 @@ vec_arith.numeric.substance <- function(op, x, y, ...) {
          call. = FALSE))
 }
 
-#' Multiply a substance quantity by a units quantity
-#'
-#' Concentration times volume is an amount, still of the same substance. This
-#' needs its own function because `*` cannot be made to work: R refuses to
-#' dispatch a binary operator when both operands carry methods from different
-#' classes, so `x * units::set_units(3, "L")` fails with "Incompatible methods"
-#' before any method of ours is reached. No S3 arrangement avoids that -- the
-#' only thing that does is inheriting from `units`, which silently returns a
-#' plain `units` object with the substance dropped, and is precisely what this
-#' class exists to prevent.
-#'
-#' Multiplying by a plain number uses `*` as usual; only `units` quantities
-#' need this function. For division, multiply by the reciprocal.
-#'
-#' @param x A [substance] vector.
-#' @param by A [units::units] quantity, or a plain number.
-#'
-#' @return A `substance` vector with the combined unit.
-#'
-#' @examples
-#' conc <- substance(2, "mmol/L", "glucose")
-#' substance_scale(conc, units::set_units(3, "L"))       # -> mmol of glucose
-#' substance_scale(conc, 1 / units::set_units(3, "L"))   # divide by a volume
+## ---- interoperating with plain `units` quantities --------------------------
+##
+## Concentration times volume is an amount, still of the same substance. Without
+## help, R refuses to evaluate it: `substance` and `units` carry operator
+## methods from different classes, and R will not choose between them, so
+## `x * units::set_units(3, "L")` fails with "Incompatible methods" before any
+## method of ours runs.
+##
+## chooseOpsMethod() (R >= 4.3.0) is the supported way to break that tie. It is
+## called with `x` always bound to our object and `y` to the other operand;
+## `reverse` says which side ours was on. We claim the tie only for `units`,
+## the one conflict we can service -- any other clash keeps R's default
+## behaviour rather than being silently captured by us.
+
 #' @export
-substance_scale <- function(x, by) {
-  stopifnot(inherits(x, "substance"))
-  if (!inherits(by, "units")) return(x * as.numeric(by))
-  combined <- unit_quantity(x) * by
-  new_substance(vctrs::field(x, "value") * as.numeric(combined),
-                vctrs::field(x, "substance"),
-                units(combined), substance_system_of(x))
+chooseOpsMethod.substance <- function(x, y, mx, my, cl, reverse) inherits(y, "units")
+
+#' @export
+#' @method vec_arith.substance units
+vec_arith.substance.units <- function(op, x, y, ...)
+  substance_arith_units(op, x, y, reverse = FALSE)
+
+## The reverse direction, `units * substance`, dispatches vec_arith() on the
+## units object, so it needs a vec_arith.units to route from. vctrs ships these
+## for the base classes (numeric, Date, difftime, ...) but not for units; this
+## one arguably belongs in the units package rather than here.
+
+#' @export
+#' @method vec_arith units
+vec_arith.units <- function(op, x, y, ...) UseMethod("vec_arith.units", y)
+
+#' @export
+#' @method vec_arith.units default
+vec_arith.units.default <- function(op, x, y, ...)
+  vctrs::stop_incompatible_op(op, x, y)
+
+#' @export
+#' @method vec_arith.units substance
+vec_arith.units.substance <- function(op, x, y, ...)
+  substance_arith_units(op, y, x, reverse = TRUE)
+
+## `s` is the substance operand and `q` the units one; `reverse` says whether
+## `q` came first in the expression.
+substance_arith_units <- function(op, s, q, reverse) {
+  if (!op %in% c("*", "/"))
+    stop("cannot use `", op, "` on a `substance` and a bare `units` quantity: ",
+         "only `*` and `/` are defined, because a quantity with no substance ",
+         "cannot be added to or compared with one that has a substance.",
+         "\n  Give the other operand a substance, or use drop_substance().",
+         call. = FALSE)
+  sq <- drop_substance(s)
+  combined <- if (reverse) get(op, envir = baseenv())(q, sq)
+              else get(op, envir = baseenv())(sq, q)
+  new_substance(as.numeric(combined),
+                vctrs::vec_recycle(vctrs::field(s, "substance"),
+                                   length(combined)),
+                units(combined), substance_system_of(s))
 }
 
 #' @export

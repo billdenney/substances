@@ -21,7 +21,7 @@ Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 8.0.0
 Depends:
-    R (>= 4.1.0)
+    R (>= 4.3.0)
 Imports:
     units (>= 0.8-0),
     vctrs (>= 0.6.0)

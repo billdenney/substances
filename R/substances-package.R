@@ -14,6 +14,14 @@
 #' So here the substance is a field of the vector, and the registry supplies the
 #' quantities that bridge dimensions `units` cannot relate on its own.
 #'
+#' @section R version:
+#' R >= 4.3.0 is required for [chooseOpsMethod()], which is what lets a
+#' `substance` interoperate with a plain [units::units] quantity. Without it R
+#' refuses to choose between the two classes' operator methods and
+#' `x * units::set_units(3, "L")` fails with "Incompatible methods". The only
+#' S3 arrangement that works without it is inheriting from `units`, which
+#' silently drops the substance.
+#'
 #' @section Out of scope:
 #' Normalising unit *strings* (`ng/ml` versus `ng/mL`, `IU/L` versus `U/L`) is
 #' per-source data cleaning and belongs in the consuming package. So are

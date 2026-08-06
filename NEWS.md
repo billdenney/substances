@@ -58,15 +58,36 @@ yet agreed upstream — the API should be expected to change.
   elements clinical data actually uses carry CIAAW 2021 values; the rest keep
   their inherited values, flagged in `note` as predating the 2009 IUPAC revision.
 
+## Interoperating with plain `units` quantities
+
+`x * units::set_units(3, "L")` works, and so does the reverse order and
+division both ways, with the substance carried through. This needs
+`chooseOpsMethod()`, hence **R >= 4.3.0**: without it R refuses to dispatch a
+binary operator when both operands carry methods from different classes, and
+the expression fails with "Incompatible methods" before any method of ours
+runs. Notably the only S3 arrangement that works *without* `chooseOpsMethod()`
+is inheriting from `units`, which returns a plain `units` object with the
+substance silently dropped — so the tie-break is what lets the class stay
+composed rather than inherited.
+
+We claim the tie only when the other operand is a `units` quantity; any other
+`Ops` conflict keeps R's default behaviour rather than being captured by us.
+
+The reverse direction needs a `vec_arith.units` to route from, which this
+package currently registers. `vctrs` ships such methods for the base classes
+but not for `units`, and this one arguably belongs in `units` itself — worth
+raising upstream. A test pins that ordinary units-to-units arithmetic is
+unaffected.
+
+Only `*` and `/` are defined against a bare `units` quantity. Addition and
+comparison error, because a quantity with no substance should not silently
+combine with one that has a substance; whether comparison against a
+substance-free threshold should be allowed is an open question.
+
 ## Known limitations
 
-* `x * units::set_units(3, "L")` does not work and cannot be made to: R refuses
-  to dispatch a binary operator when both operands carry methods from different
-  classes, so this fails before any method of ours runs. Use
-  `substance_scale()`. A test pins the behaviour so a change in R or `vctrs`
-  would surface.
 * Cross-substance (stoichiometric) conversion is designed but not implemented,
-  as agreed on #1.
+  as agreed on issue 1.
 * Ordering and comparison fall back to the `vctrs` record defaults, which
   compare value then substance. Whether comparing across substances should be
   an error is an open question.

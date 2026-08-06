@@ -36,24 +36,80 @@ test_that("adding a bare number is an error", {
   expect_error(substance(1, "mmol/L", "glucose") + 1, "has no unit", fixed = TRUE)
 })
 
-test_that("substance_scale() carries the substance through a units quantity", {
+test_that("multiplying by a units quantity carries the substance through", {
   # concentration times volume is an amount, still of the same substance
   x <- substance(2, "mmol/L", "glucose")
-  y <- substance_scale(x, units::set_units(3, "L"))
+  y <- x * units::set_units(3, "L")
   expect_s3_class(y, "substance")
   expect_equal(substance_of(y), "glucose")
   expect_equal(as.numeric(units::set_units(drop_substance(y), "mmol")), 6,
                tolerance = 1e-9)
-
-  expect_equal(as.numeric(substance_scale(x, 3)), 6)
 })
 
-test_that("`*` between a substance and a units quantity cannot dispatch", {
-  # Pinned deliberately. R refuses to choose between the two classes' operator
-  # methods, so this fails before any method of ours runs; substance_scale() is
-  # the supported path. If a future R or vctrs changes this, this test tells us.
+test_that("multiplication works with the units quantity on either side", {
   x <- substance(2, "mmol/L", "glucose")
-  expect_error(suppressWarnings(x * units::set_units(3, "L")))
+  vol <- units::set_units(3, "L")
+  left <- x * vol
+  right <- vol * x
+  expect_s3_class(right, "substance")
+  expect_equal(substance_of(right), "glucose")
+  expect_equal(as.numeric(units::set_units(drop_substance(right), "mmol")),
+               as.numeric(units::set_units(drop_substance(left), "mmol")),
+               tolerance = 1e-9)
+})
+
+test_that("division by a units quantity works in both directions", {
+  x <- substance(6, "mmol/L", "glucose")
+  vol <- units::set_units(3, "L")
+
+  a <- x / vol
+  expect_s3_class(a, "substance")
+  expect_equal(substance_of(a), "glucose")
+  expect_equal(as.numeric(a), 2)
+
+  b <- vol / x
+  expect_s3_class(b, "substance")
+  expect_equal(substance_of(b), "glucose")
+  expect_equal(as.numeric(b), 0.5)
+})
+
+test_that("a units quantity recycles against a longer substance vector", {
+  x <- substance(c(1, 2, 3), "mmol/L", c("glucose", "sodium", "glucose"))
+  y <- x * units::set_units(2, "L")
+  expect_length(y, 3L)
+  expect_equal(substance_of(y), c("glucose", "sodium", "glucose"))
+})
+
+test_that("only `*` and `/` are defined against a bare units quantity", {
+  x <- substance(2, "mmol/L", "glucose")
+  expect_error(x + units::set_units(3, "mmol/L"), "only `*` and `/`",
+               fixed = TRUE)
+  expect_error(units::set_units(3, "mmol/L") - x, "only `*` and `/`",
+               fixed = TRUE)
+})
+
+test_that("chooseOpsMethod is claimed only for units, not every conflict", {
+  x <- substance(2, "mmol/L", "glucose")
+  expect_true(chooseOpsMethod(x, units::set_units(1, "L")))
+  expect_false(chooseOpsMethod(x, as.difftime(1, units = "secs")))
+  expect_false(chooseOpsMethod(x, Sys.Date()))
+})
+
+test_that("adding vec_arith.units leaves ordinary units arithmetic intact", {
+  # We register a method on another package's class, so pin the behaviour that
+  # must not change: units-to-units arithmetic never reaches vec_arith at all.
+  L <- units::set_units(3, "L")
+  expect_equal(as.numeric(L * units::set_units(2, "m")), 6)
+  expect_equal(as.numeric(L + units::set_units(2, "L")), 5)
+  expect_equal(as.numeric(L - units::set_units(1, "L")), 2)
+  expect_equal(as.numeric(L * 2), 6)
+  expect_equal(as.numeric(2 * L), 6)
+  expect_equal(as.numeric(L / units::set_units(3, "L")), 1)
+  expect_equal(as.numeric(-L), -3)
+  expect_true(L > units::set_units(1, "L"))
+  expect_equal(as.numeric(units::set_units(units::set_units(1, "km"), "m")), 1000)
+  expect_equal(as.character(units(units::set_units(1, "m") /
+                                    units::set_units(2, "s"))), "m/s")
 })
 
 test_that("dividing by the same substance cancels it", {

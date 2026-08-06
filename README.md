@@ -86,6 +86,28 @@ Note that `%` and `mmol/mol` are both dimensionless, so a units-first
 implementation would convert these by a factor of 10. Explicit conversions are
 consulted before the dimensional path for exactly this reason.
 
+## Arithmetic keeps the substance
+
+Concentration times volume is an amount, still of the same substance, and
+dividing two quantities of the same substance cancels it:
+
+```r
+conc <- substance(2, "mmol/L", "glucose")
+conc * units::set_units(3, "L")
+#> <substance<mmol>[1]>
+#> [1] 6 [mmol] glucose
+
+substance(6, "mmol/L", "glucose") / substance(2, "mmol/L", "glucose")
+#> 3 [1]
+```
+
+Mixing quantities of a bare unit with a substance beyond `*` and `/` is refused,
+as is adding across substances.
+
+This interoperation requires **R >= 4.3.0**, for `chooseOpsMethod()`. Below that,
+R will not choose between `substance` and `units` operator methods and the
+expression fails with "Incompatible methods" before any method here runs.
+
 ## Every value has a citation
 
 Reference data ships as CSV with a `source_id` on each value, and a `status`

@@ -21,6 +21,16 @@ impossible. Isolation and conversion are mutually exclusive inside udunits.
 So here the substance is a field of the vector, and the registry supplies the
 quantities that bridge dimensions \code{units} cannot relate on its own.
 }
+\section{R version}{
+
+R >= 4.3.0 is required for \code{\link[=chooseOpsMethod]{chooseOpsMethod()}}, which is what lets a
+\code{substance} interoperate with a plain \link[units:units]{units::units} quantity. Without it R
+refuses to choose between the two classes' operator methods and
+\code{x * units::set_units(3, "L")} fails with "Incompatible methods". The only
+S3 arrangement that works without it is inheriting from \code{units}, which
+silently drops the substance.
+}
+
 \section{Out of scope}{
 
 Normalising unit \emph{strings} (\code{ng/ml} versus \code{ng/mL}, \code{IU/L} versus \code{U/L}) is

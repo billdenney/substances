@@ -35,10 +35,16 @@ yet agreed upstream — the API should be expected to change.
 * Arithmetic requires matching substances; division by the same substance
   cancels it, leaving a `units` quantity.
 
-## Systems
+## Systems, and bringing your own substances
 
-* `substance_system()` creates isolated registries that coexist in one session,
-  optionally inheriting from another with local entries taking precedence.
+* `substance_system()` is the extension point, and takes a **data frame of
+  parameters alone** — the identity table is optional and is derived from
+  whatever the other tables declare, so registering a substance is one row
+  rather than a schema. Supply `substances` explicitly to record names,
+  formulae and identifiers, and the referential check then applies. Synonyms
+  and conversions extend the same way.
+* Registries are isolated and coexist in one session, optionally inheriting from
+  another with local entries taking precedence.
   Because the substance lives in R data rather than the udunits database, this
   needs no global state, and a `substance` vector records its system so vectors
   from different systems cannot be combined.
@@ -68,12 +74,25 @@ yet agreed upstream — the API should be expected to change.
   chemistry panels, lipids, hormones, vitamins, therapeutic drug monitoring and
   toxicology. 15 published conventional-to-SI factors are pinned as a regression
   corpus.
-* **Densities of 95 elements at their standard state**, from the PubChem
-  periodic table, with the standard state and reference conditions in the note
-  because a gas density is meaningless without them. Density bridges mass and
-  volume on its own, and with the atomic weight it gives the molar volume:
-  gold 10.2 cm3/mol, sodium 23.7 cm3/mol, helium 22.4 L/mol at STP, hydrogen
-  11.2 L/mol of atoms.
+* **Volume bridges for the elements**, from the PubChem periodic table, with the
+  standard state and reference conditions in the note. Which parameter applies
+  depends on the state:
+  * a **solid or liquid** carries `density`, which links mass and volume and,
+    with the atomic weight, gives the molar volume — gold 10.2 cm3/mol, sodium
+    23.7, mercury 14.8;
+  * a **gas** carries `molar_volume` instead, because Avogadro's law makes
+    amount, not mass, the thing volume is proportional to. Helium, neon,
+    dihydrogen and dinitrogen all land within 0.2% of 22.4 L/mol, as they must.
+* The **diatomic elements are registered as the molecules they are**
+  (`dihydrogen`, `dioxygen`, `dichlorine`, …), and the atomic entries carry no
+  volume bridge at all. A tabulated element density describes the standard
+  state, which for hydrogen is H2, so pairing it with an atomic weight silently
+  answers a different question: volume per mole of *atoms*, 11.2 L for hydrogen,
+  half a molar volume and a quantity nobody wants, since monatomic hydrogen is
+  not something you can have. The withheld entries say so in their note.
+* Elements with no practical elemental form — technetium, promethium, the
+  transuranics — carry no volume bridge, rather than a tabulated number nobody
+  can use.
 * `chemical_elements.csv` is migrated into the parameter table. The 21 elements
   clinical data actually uses carry CIAAW 2021 values; the rest keep their
   inherited values, flagged in `note` as predating the 2009 IUPAC revision.
@@ -112,10 +131,16 @@ comparison error, because a quantity with no substance should not silently
 combine with one that has a substance; whether comparison against a
 substance-free threshold should be allowed is an open question.
 
-## Known limitations
+## Deliberately out of scope
 
-* Cross-substance (stoichiometric) conversion is designed but not implemented,
-  as agreed on issue 1.
+* **Converting between substances.** H2 to H, CO2 to C, reactants to products:
+  offering any of these implies offering all of them, which is a different
+  package. Quantities of different substances do not combine, and that is the
+  end of it. A project that needs a particular relationship registers the
+  substance it actually measures — `urea_nitrogen` alongside `urea` is the
+  worked example.
+* **Unit string normalisation**, which is per-source data cleaning.
+* **Conversions `units` already performs**, which are delegated untouched.
 * Ordering and comparison fall back to the `vctrs` record defaults, which
   compare value then substance. Whether comparing across substances should be
   an error is an open question.

@@ -17,8 +17,7 @@ same_substance_or_stop <- function(x, y, op) {
   if (any(bad))
     stop("cannot use `", op, "` on different substances: ",
          paste(unique(paste(sx[bad], "and", sy[bad])), collapse = "; "),
-         "\n  Convert one to the other first; cross-substance conversion is not ",
-         "implemented yet.", call. = FALSE)
+         call. = FALSE)
   invisible(TRUE)
 }
 

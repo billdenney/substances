@@ -99,37 +99,100 @@ element_synonyms <- data.frame(
   context      = "element symbol",
   source_id    = NA_character_)
 
-## ------------------------------------------------------- element density ---
-## Density bridges mass and volume, and for an element it also gives the molar
-## volume once combined with the atomic weight. Density is a property of the
-## bulk material, so it stays consistent with an ATOMIC molar mass even where
-## the standard state is diatomic: one mole of H atoms occupies 1.008/0.00008988
-## = 11.2 L, which is half a mole of H2 at STP, as it should be. The standard
-## state and reference conditions are recorded because a gas density is
-## meaningless without them.
+## ------------------------------- element density and gas molar volume ------
+## How amount, mass and volume are bridged depends on the state of the element.
+##
+## For a SOLID or LIQUID, density links mass and volume, and combining it with
+## the atomic weight gives the volume per mole of atoms -- the ordinary "atomic
+## volume" of reference tables.
+##
+## For a GAS, that route is wrong. Avogadro's law says a mole of any gas
+## occupies the same ~22.4 L at STP, so the bridge from amount to volume is the
+## molar volume and it barely depends on the substance at all. Deriving volume
+## from mass instead makes it look substance-specific, and worse, it silently
+## answers a different question: a tabulated element density is a property of
+## the element in its STANDARD STATE, which for H, N, O, F and Cl is the
+## diatomic molecule, whereas the atomic weight describes a single atom. Pairing
+## them gives the volume per mole of ATOMS -- 11.2 L for hydrogen, half of what
+## a mole of gas occupies, and a quantity nobody wants, since monatomic hydrogen
+## is not something you can have.
+##
+## So gases carry `molar_volume` and no density, and the diatomic elements are
+## registered as the molecules they actually are. Elements not naturally or
+## typically handled in elemental form are left out entirely rather than
+## carrying values nobody can use.
 ptable <- read.csv("data-raw/pubchem_periodictable.csv", stringsAsFactors = FALSE)
 ptable$Density <- suppressWarnings(as.numeric(ptable$Density))
-ptable <- ptable[!is.na(ptable$Density), ]
+## Join on the SYMBOL, not the name: the two sources disagree on at least one
+## (W is "Wolfram" in the element table and "Tungsten" in PubChem), and a name
+## join silently drops those rows or invents new substances.
+ptable$id <- element_substances$substance_id[
+  match(ptable$Symbol, elements$substance_identifier)]
+ptable <- ptable[!is.na(ptable$id), ]
 
-density_note <- ifelse(
-  grepl("Gas", ptable$StandardState),
-  paste0("standard state ", tolower(ptable$StandardState),
-         "; at STP (0 C, 101.325 kPa)"),
-  paste0("standard state ", tolower(ptable$StandardState),
-         "; at or near room temperature"))
+## Elements available as the element: everything up to bismuth except the two
+## with no stable isotope, plus thorium and uranium. This drops the synthetic
+## and intensely radioactive ones, which have tabulated densities but no
+## practical elemental form.
+accessible <- (ptable$AtomicNumber <= 83 & !ptable$AtomicNumber %in% c(43, 61)) |
+  ptable$AtomicNumber %in% c(90, 92)
+ptable <- ptable[accessible & !is.na(ptable$Density), ]
 
+is_gas <- grepl("^Gas$", ptable$StandardState)
+
+## Elements whose standard state is a diatomic molecule. Their standard-state
+## property belongs to the molecule, registered below, not to the atom.
+diatomic <- c(hydrogen = "dihydrogen", nitrogen = "dinitrogen",
+              oxygen = "dioxygen", fluorine = "difluorine",
+              chlorine = "dichlorine", bromine = "dibromine",
+              iodine = "diiodine")
+
+atomic_ok <- !ptable$id %in% names(diatomic)
+
+## Solids and liquids, as atoms: density.
 element_density <- data.frame(
   stringsAsFactors = FALSE,
-  substance_id = tolower(ptable$Name),
+  substance_id = ptable$id[atomic_ok & !is_gas],
   parameter    = "density",
-  value        = ptable$Density,
+  value        = ptable$Density[atomic_ok & !is_gas],
   unit         = "g/mL",
   status       = "ok",
   source_id    = "pubchem-periodictable",
-  note         = density_note)
-# keep only elements the registry actually knows
-element_density <- element_density[
-  element_density$substance_id %in% element_substances$substance_id, ]
+  note         = paste0("standard state ",
+                        tolower(ptable$StandardState[atomic_ok & !is_gas]),
+                        "; at or near room temperature"))
+
+## Monatomic gases, as atoms: molar volume. The element IS the gas particle
+## here, so the atomic entry is the right home for it.
+mono_gas <- ptable[atomic_ok & is_gas, ]
+mono_mass <- element_parameters$value[
+  match(mono_gas$id, element_parameters$substance_id)]
+element_molar_volume <- data.frame(
+  stringsAsFactors = FALSE,
+  substance_id = mono_gas$id,
+  parameter    = "molar_volume",
+  value        = signif(mono_mass / mono_gas$Density / 1000, 6),   # mL -> L
+  unit         = "L/mol",
+  status       = "ok",
+  source_id    = "pubchem-periodictable",
+  note         = paste("monatomic gas; derived as atomic weight / standard-state",
+                       "density at STP (0 C, 101.325 kPa)"))
+
+## The atoms of the diatomic elements get neither, and say why.
+withheld <- data.frame(
+  stringsAsFactors = FALSE,
+  substance_id = names(diatomic),
+  parameter    = "density",
+  value        = NA_real_,
+  unit         = "g/mL",
+  status       = "wrong_entity",
+  source_id    = NA_character_,
+  note         = paste0(
+    "withheld: the standard state is ", names(diatomic), "'s diatomic form, so ",
+    "its density and molar volume belong to ", diatomic, ", not to the atom. ",
+    "Pairing a molecular density with an atomic weight would give volume per ",
+    "mole of atoms, which for a gas is half the molar volume."))
+withheld <- withheld[names(diatomic) %in% element_substances$substance_id, ]
 
 ## ------------------------------------------------------- molecules, cited ---
 ## Formula and identifiers from PubChem; molar mass is computed from the
@@ -156,6 +219,13 @@ citric_acid,Citric acid,C6H8O7,KRKNYBCHXYNGOX-UHFFFAOYSA-N,311
 glycerol,Glycerol,C3H8O3,PEDCQBHIVMGVHV-UHFFFAOYSA-N,753
 homocysteine,L-Homocysteine,C4H9NO2S,FFFHZYDWPBMWHY-VKHMYHEASA-N,91552
 ammonia,Ammonia,H3N,QGZKDVFQNNGYKY-UHFFFAOYSA-N,222
+dihydrogen,Dihydrogen,H2,UFHFLCQGNIYNRP-UHFFFAOYSA-N,783
+dinitrogen,Dinitrogen,N2,IJGRMHOSHXDMSA-UHFFFAOYSA-N,947
+dioxygen,Dioxygen,O2,MYMOFIZGZYHOMD-UHFFFAOYSA-N,977
+difluorine,Difluorine,F2,PXGOKWXKJXAPGV-UHFFFAOYSA-N,24524
+dichlorine,Dichlorine,Cl2,KZBUYRJDOAKODT-UHFFFAOYSA-N,24526
+dibromine,Dibromine,Br2,GDTBXPJZTBHREO-UHFFFAOYSA-N,24408
+diiodine,Diiodine,I2,PNDPGZBMCMUPRI-UHFFFAOYSA-N,807
 carbon_dioxide,Carbon dioxide,CO2,CURLTUGMZLYLDI-UHFFFAOYSA-N,280
 bicarbonate,Bicarbonate,CHO3,,769
 water,Water,H2O,XLYOFNOQVPJJNP-UHFFFAOYSA-N,962
@@ -286,8 +356,41 @@ extra_parameters <- rbind(
           paste("apo(a) isoform size varies between individuals, so there is no",
                 "valid fixed mass<->molar factor; measure nmol/L directly")))
 
-parameters <- rbind(element_parameters, element_density, computed,
-                    extra_parameters)
+## The standard-state figure, now attached to the molecule it actually
+## describes. The gases get a molar volume, so dihydrogen lands on ~22.4 L/mol
+## alongside helium and neon as Avogadro's law requires; bromine and iodine are
+## a liquid and a solid, so density is the right bridge for them.
+di_row <- match(names(diatomic), ptable$id)
+di_mass <- as.numeric(molar_mass_from_formula(
+  c("H2", "N2", "O2", "F2", "Cl2", "Br2", "I2"), system = "bootstrap"))
+di_is_gas <- grepl("^Gas$", ptable$StandardState[di_row])
+
+diatomic_gas_volume <- data.frame(
+  stringsAsFactors = FALSE,
+  substance_id = unname(diatomic[di_is_gas]),
+  parameter    = "molar_volume",
+  value        = signif(di_mass[di_is_gas] / ptable$Density[di_row][di_is_gas] / 1000, 6),
+  unit         = "L/mol",
+  status       = "ok",
+  source_id    = "pubchem-periodictable",
+  note         = paste("diatomic gas; derived as molecular weight /",
+                       "standard-state density at STP (0 C, 101.325 kPa)"))
+
+diatomic_condensed_density <- data.frame(
+  stringsAsFactors = FALSE,
+  substance_id = unname(diatomic[!di_is_gas]),
+  parameter    = "density",
+  value        = ptable$Density[di_row][!di_is_gas],
+  unit         = "g/mL",
+  status       = "ok",
+  source_id    = "pubchem-periodictable",
+  note         = paste0("standard state ",
+                        tolower(ptable$StandardState[di_row][!di_is_gas]),
+                        "; at or near room temperature"))
+
+parameters <- rbind(element_parameters, element_density, element_molar_volume,
+                    withheld, diatomic_gas_volume, diatomic_condensed_density,
+                    computed, extra_parameters)
 
 ## ------------------------------------------------------------ conversions ---
 conversions <- data.frame(
@@ -367,7 +470,11 @@ molecule_synonyms <- rbind(
   syn("sodium", "Sodium"), syn("potassium", "Potassium"),
   syn("calcium", "Calcium"), syn("magnesium", "Magnesium"),
   syn("chlorine", "Chloride"), syn("lithium", "Lithium"),
-  syn("iron", "Iron"), syn("zinc", "Zinc"), syn("copper", "Copper"))
+  syn("iron", "Iron"), syn("zinc", "Zinc"), syn("copper", "Copper"),
+  syn("wolfram", "Tungsten"),
+  syn("dihydrogen", "Hydrogen gas", "H2"),
+  syn("dinitrogen", "Nitrogen gas", "N2"),
+  syn("dioxygen", "Oxygen gas", "O2"))
 
 synonyms <- rbind(element_synonyms, molecule_synonyms)
 synonyms <- synonyms[!duplicated(tolower(synonyms$synonym)), ]

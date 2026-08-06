@@ -133,12 +133,89 @@ test_that("setting an unknown default system is refused", {
 })
 
 test_that("substance_info() prints the note, where caveats and conditions live", {
-  out <- paste(capture.output(print(substance_info("hydrogen"))), collapse = "\n")
-  expect_match(out, "density", fixed = TRUE)
-  expect_match(out, "STP", fixed = TRUE)          # reference conditions
-  expect_match(out, "standard state gas", fixed = TRUE)
+  # a gas molar volume is meaningless without its reference conditions
+  out <- paste(capture.output(print(substance_info("dihydrogen"))),
+               collapse = "\n")
+  expect_match(out, "molar_volume", fixed = TRUE)
+  expect_match(out, "STP", fixed = TRUE)
 
-  out2 <- paste(capture.output(print(substance_info("Lp(a)"))), collapse = "\n")
-  expect_match(out2, "disputed", fixed = TRUE)
-  expect_match(out2, "isoform size varies", fixed = TRUE)
+  # and the atomic entry explains what it withholds and why
+  out2 <- paste(capture.output(print(substance_info("hydrogen"))),
+                collapse = "\n")
+  expect_match(out2, "wrong_entity", fixed = TRUE)
+  expect_match(out2, "dihydrogen", fixed = TRUE)
+
+  out3 <- paste(capture.output(print(substance_info("Lp(a)"))), collapse = "\n")
+  expect_match(out3, "disputed", fixed = TRUE)
+  expect_match(out3, "isoform size varies", fixed = TRUE)
+})
+
+test_that("a package can register substances from a parameters frame alone", {
+  # the extension point: no identity table, no ceremony, one row per fact
+  substance_system("byo", inherit = "substances", parameters = data.frame(
+    substance_id = c("widgetol", "widgetol"),
+    parameter    = c("molar_mass", "density"),
+    value        = c(100, 1.2),
+    unit         = c("g/mol", "g/mL"),
+    source_id    = "internal-spec"))
+
+  expect_equal(substance_resolve("widgetol", system = "byo"), "widgetol")
+  expect_equal(as.numeric(set_units(substance(1, "mg/dL", "widgetol",
+                                              system = "byo"), "mmol/L")),
+               0.1, tolerance = 1e-9)
+  expect_equal(as.numeric(set_units(substance(120, "g", "widgetol",
+                                              system = "byo"), "mL")),
+               100, tolerance = 1e-9)
+  # inherited entries still work alongside
+  expect_equal(as.numeric(set_units(substance(100, "mg/dL", "glucose",
+                                              system = "byo"), "mmol/L")),
+               5.5507, tolerance = 1e-4)
+})
+
+test_that("the derived identity table is minimal but real", {
+  substance_system("byo_ids", parameters = data.frame(
+    substance_id = "thingol", parameter = "molar_mass", value = 50,
+    unit = "g/mol", source_id = "spec"))
+  s <- get_system("byo_ids")
+  expect_equal(s$substances$substance_id, "thingol")
+  expect_equal(s$substances$name, "thingol")
+  expect_true(is.na(s$substances$formula))
+})
+
+test_that("an explicit identity table is still checked against the rest", {
+  # opting in to the fuller schema opts in to its integrity check
+  expect_error(
+    substance_system("byo_typo",
+      substances = data.frame(substance_id = "widgetol", name = "Widgetol"),
+      parameters = data.frame(substance_id = "widgetl", parameter = "molar_mass",
+                              value = 1, unit = "g/mol")),
+    "no entry in `substances`", fixed = TRUE)
+})
+
+test_that("synonyms and conversions extend without an identity table too", {
+  substance_system("byo_syn", parameters = data.frame(
+      substance_id = "gadgetin", parameter = "molar_mass", value = 200,
+      unit = "g/mol", source_id = "spec"),
+    synonyms = data.frame(substance_id = "gadgetin", synonym = "Gadget X",
+                          context = "study", source_id = NA))
+  expect_equal(substance_resolve("Gadget X", system = "byo_syn"), "gadgetin")
+
+  substance_system("byo_conv", parameters = data.frame(
+      substance_id = "scoreish", parameter = "molar_mass", value = 1,
+      unit = "g/mol", source_id = "spec"),
+    conversions = data.frame(substance_id = "scoreish", from_unit = "%",
+                             to_unit = "mmol/mol", kind = "affine", slope = 2,
+                             intercept = 1, status = "ok", source_id = "spec",
+                             note = NA))
+  expect_equal(as.numeric(set_units(substance(3, "%", "scoreish",
+                                              system = "byo_conv"),
+                                    "mmol/mol")), 7)
+})
+
+test_that("a system with only its own entries sees nothing inherited", {
+  substance_system("byo_isolated", parameters = data.frame(
+    substance_id = "loner", parameter = "molar_mass", value = 10,
+    unit = "g/mol", source_id = "spec"))
+  expect_true(is.na(substance_resolve("glucose", system = "byo_isolated")))
+  expect_true(is.na(substance_resolve("loner")))
 })

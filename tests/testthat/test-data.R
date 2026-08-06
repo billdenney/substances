@@ -132,40 +132,75 @@ test_that("the loaded default system is the one the CSVs describe", {
   expect_gt(nrow(sys$substances), 100L)   # elements plus the clinical set
 })
 
-test_that("element densities are registered with a usable unit", {
-  d <- sys$parameters[sys$parameters$parameter == "density", ]
-  expect_gt(nrow(d), 90L)
+test_that("densities are registered for solids and liquids only", {
+  d <- sys$parameters[sys$parameters$parameter == "density" &
+                        sys$parameters$status == "ok", ]
+  expect_gt(nrow(d), 70L)
   expect_true(all(d$unit == "g/mL"))
   expect_true(all(d$value > 0))
   expect_true(all(d$source_id == "pubchem-periodictable"))
-  # a gas density is meaningless without its reference conditions
   expect_true(all(grepl("standard state", d$note)))
-  expect_true(any(grepl("STP", d$note)))
+  # a gas gets a molar volume instead, so no density row mentions a gas state
+  expect_false(any(grepl("standard state gas", d$note)))
 })
 
-test_that("density and molar mass together give the right molar volume", {
-  # solid metals: literature molar volumes
+test_that("gases carry a molar volume, and it is ~22.4 L/mol for all of them", {
+  # Avogadro's law: a mole of any gas occupies the same volume at STP, so this
+  # bridge is amount-to-volume and is barely substance-specific at all
+  mv <- sys$parameters[sys$parameters$parameter == "molar_volume", ]
+  expect_gt(nrow(mv), 8L)
+  expect_true(all(mv$unit == "L/mol"))
+  expect_true(all(grepl("STP", mv$note)))
+  # real gases deviate a little; chlorine is the worst at about 1.6%
+  expect_true(all(abs(mv$value - 22.4) / 22.4 < 0.02))
+
+  for (id in c("helium", "neon", "argon", "dihydrogen", "dinitrogen",
+               "dioxygen")) {
+    expect_equal(as.numeric(set_units(substance(1, "mol", id), "L")),
+                 22.4, tolerance = 5e-3, info = id)
+  }
+})
+
+test_that("density and molar mass give the molar volume of a solid or liquid", {
   expect_equal(as.numeric(set_units(substance(1, "mol", "sodium"), "cm^3")),
-               23.7, tolerance = 1e-2)
+               23.70, tolerance = 1e-2)
   expect_equal(as.numeric(set_units(substance(1, "mol", "iron"), "cm^3")),
                7.09, tolerance = 1e-2)
   expect_equal(as.numeric(set_units(substance(1, "mol", "gold"), "cm^3")),
                10.21, tolerance = 1e-2)
-
-  # a monatomic gas at STP occupies the full molar volume
-  expect_equal(as.numeric(set_units(substance(1, "mol", "helium"), "L")),
-               22.4, tolerance = 5e-2)
-  # a diatomic one occupies half of it per mole of ATOMS, which is what the
-  # atomic molar mass and the bulk density together imply
-  expect_equal(as.numeric(set_units(substance(1, "mol", "hydrogen"), "L")),
-               11.2, tolerance = 5e-2)
-  expect_equal(as.numeric(set_units(substance(1, "mol", "oxygen"), "L")),
-               11.2, tolerance = 5e-2)
+  expect_equal(as.numeric(set_units(substance(1, "mol", "mercury"), "cm^3")),
+               14.82, tolerance = 1e-2)
 })
 
 test_that("density alone bridges mass and volume", {
   expect_equal(as.numeric(set_units(substance(19.3, "g", "gold"), "cm^3")),
                1, tolerance = 1e-2)
+})
+
+test_that("the atoms of diatomic elements have no volume bridge of their own", {
+  # monatomic hydrogen is not something you can have, so a volume per mole of
+  # H atoms answers a question nobody asked; the entry records why
+  for (id in c("hydrogen", "nitrogen", "oxygen", "chlorine", "bromine",
+               "iodine")) {
+    expect_error(set_units(substance(1, "mol", id), "L"),
+                 "cannot convert", info = id)
+    expect_null(substance_parameters(id)$density, info = id)
+    expect_null(substance_parameters(id)$molar_volume, info = id)
+  }
+  info <- substance_info("hydrogen")
+  withheld <- info$parameters[info$parameters$status == "wrong_entity", ]
+  expect_equal(nrow(withheld), 1L)
+  expect_match(withheld$note, "dihydrogen", fixed = TRUE)
+})
+
+test_that("elements with no practical elemental form carry no volume bridge", {
+  for (id in c("technetium", "promethium", "polonium", "plutonium")) {
+    expect_null(substance_parameters(id)$density, info = id)
+    expect_null(substance_parameters(id)$molar_volume, info = id)
+  }
+  # but the naturally occurring actinides do
+  expect_false(is.null(substance_parameters("uranium")$density))
+  expect_false(is.null(substance_parameters("thorium")$density))
 })
 
 test_that("BUN and urea are different substances, not synonyms", {

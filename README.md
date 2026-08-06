@@ -66,14 +66,29 @@ Parameters compose. Sodium mg/dL to mEq/L needs molar mass *and* valence:
 set_units(substance(1, "mg/dL", "sodium"), "meq/L")    #> 0.4349761 [meq/L]
 ```
 
-Densities of the elements at their standard state are registered too, so mass
-and volume are bridged, and with the atomic weight you get the molar volume:
+Volume is bridged differently depending on the state, because the physics is
+different. A solid or liquid carries a density, linking mass and volume:
 
 ```r
-set_units(substance(19.3, "g", "gold"), "cm^3")    #> 1.000934 [cm^3] gold
-set_units(substance(1, "mol", "gold"), "cm^3")     #> 10.21505 [cm^3] gold
-set_units(substance(1, "mol", "helium"), "L")      #> 22.42354 [L] helium
+set_units(substance(19.3, "g", "gold"), "cm^3")     #> 1.000934 [cm^3] gold
+set_units(substance(1, "mol", "gold"), "cm^3")      #> 10.21505 [cm^3] gold
 ```
+
+A gas carries a molar volume instead, since Avogadro's law makes volume
+proportional to amount rather than mass — so every gas lands on the same figure:
+
+```r
+set_units(substance(1, "mol", "helium"), "L")       #> 22.42354 [L] helium
+set_units(substance(1, "mol", "neon"), "L")         #> 22.42409 [L] neon
+set_units(substance(1, "mol", "dihydrogen"), "L")   #> 22.42990 [L] dihydrogen
+```
+
+Note `dihydrogen`, not `hydrogen`. A tabulated element density describes the
+standard state, which for hydrogen is H₂, so pairing it with the *atomic* weight
+would give the volume per mole of atoms — half a molar volume, and a quantity
+nobody wants, since monatomic hydrogen is not something you can have. The
+diatomic elements are registered as the molecules they are, and the atomic
+entries say why they carry no volume bridge.
 
 And the parameter is not always a molar mass. Insulin mU/L to pmol/L is fixed by
 the WHO activity standard, not by insulin's mass:
@@ -157,34 +172,48 @@ molar_mass_from_formula(c("C6H12O6", "C27H46O"))
 #> [1] 180.156 386.664
 ```
 
-## Isolated conversion systems
+## Bringing your own substances
 
-Because the substance is R data rather than global udunits state, several
-registries coexist in one session, and vectors from different systems refuse to
-combine:
+The shipped registry covers common chemistry and a working clinical set. It is
+not meant to be exhaustive, and it is not the only registry you can have — a
+package or project supplies its own from a data frame, with no identity table
+and no ceremony:
 
 ```r
-substance_system("my_project", inherit = "substances",
-                 substances = data.frame(substance_id = "widgetol",
-                                         name = "Widgetol"),
-                 parameters = data.frame(substance_id = "widgetol",
-                                         parameter = "molar_mass", value = 100,
-                                         unit = "g/mol", status = "ok"))
+substance_system("my_project", inherit = "substances", parameters = data.frame(
+  substance_id = c("widgetol", "widgetol"),
+  parameter    = c("molar_mass", "density"),
+  value        = c(100, 1.2),
+  unit         = c("g/mol", "g/mL"),
+  source_id    = "internal-spec"))
+
 set_units(substance(1, "mg/dL", "widgetol", system = "my_project"), "mmol/L")
-#> <substance<mmol/L>[1]>
 #> [1] 0.1 [mmol/L] widgetol
+set_units(substance(120, "g", "widgetol", system = "my_project"), "mL")
+#> [1] 100 [mL] widgetol
 ```
+
+Identity rows are derived from the `substance_id`s the parameters mention, so
+registering a substance is one row. Because the substance is R data rather than
+global udunits state, registries coexist in one session and vectors from
+different systems refuse to combine, so one project's definitions cannot leak
+into another's.
 
 ## Scope
 
 In scope: conversions that need a property of the substance, and the registry
 that records them, with citations.
 
-Out of scope: normalising unit *strings* (`ng/ml` versus `ng/mL`, `IU/L` versus
-`U/L`). That is per-source data cleaning and belongs in the consuming package.
-Also out of scope: conversions `units` already performs — `mg/dL` to `g/L` is
-dimensional, and so is enzyme `U/L` to `ukat/L` once `U` is defined as
-`umol/min`. This package delegates both and adds nothing to them.
+Out of scope, deliberately:
+
+- **Converting between substances.** H₂ to H, CO₂ to C, reactants to products —
+  offering any of these implies offering all of them, which is a different
+  package. Quantities of different substances simply do not combine.
+- **Normalising unit strings** (`ng/ml` versus `ng/mL`, `IU/L` versus `U/L`).
+  That is per-source data cleaning and belongs in the consuming package.
+- **Conversions `units` already performs** — `mg/dL` to `g/L` is dimensional,
+  and so is enzyme `U/L` to `ukat/L` once `U` is defined as `umol/min`. Both are
+  delegated untouched.
 
 ## Status
 

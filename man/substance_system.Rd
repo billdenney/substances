@@ -18,7 +18,9 @@ substance_system(
 \item{name}{Name of the system. Must be unique within the session.}
 
 \item{substances, synonyms, parameters, conversions, sources}{Data frames with
-the registry columns. Missing tables are created empty.}
+the registry columns. Missing tables are created empty. If \code{substances} is
+omitted, an identity row is created for every \code{substance_id} the other
+tables mention.}
 
 \item{inherit}{Name of a system to inherit entries from, or \code{NULL}. Entries
 in this system take precedence.}
@@ -32,4 +34,22 @@ substance lives in R data rather than in the udunits database, several
 systems can coexist in one session without colliding, and a \link{substance}
 vector records the system it was created under so vectors from different
 systems cannot be combined.
+}
+\details{
+This is the extension point. A package with its own substances needs only a
+data frame of parameters; the identity table is optional and is derived from
+whatever the other tables declare, so adding a substance can be as short as
+one row. Inherit from \code{"substances"} to keep the shipped registry and add to
+it, or omit \code{inherit} for a registry that contains only your own entries.
+}
+\examples{
+# a downstream package's whole registration, from one data frame
+substance_system("example_pkg", inherit = "substances", parameters = data.frame(
+  substance_id = "widgetol",
+  parameter    = "molar_mass",
+  value        = 100,
+  unit         = "g/mol",
+  source_id    = "internal-spec"))
+
+set_units(substance(1, "mg/dL", "widgetol", system = "example_pkg"), "mmol/L")
 }

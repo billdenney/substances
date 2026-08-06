@@ -29,10 +29,11 @@ registry_columns <- list(
 #' @format A named character vector of the units each parameter must have.
 #' @export
 substance_parameter_units <- c(
-  molar_mass = "g/mol",   # mass <-> amount
-  density    = "g/mL",    # mass <-> volume
-  valence    = "eq/mol",  # amount <-> charge
-  activity   = "mol/IU"   # WHO biological activity <-> amount
+  molar_mass   = "g/mol",   # mass <-> amount
+  density      = "g/mL",    # mass <-> volume, for a solid or liquid
+  molar_volume = "L/mol",   # amount <-> volume, for a gas
+  valence      = "eq/mol",  # amount <-> charge
+  activity     = "mol/IU"   # WHO biological activity <-> amount
 )
 
 #' Create a conversion system
@@ -43,13 +44,32 @@ substance_parameter_units <- c(
 #' vector records the system it was created under so vectors from different
 #' systems cannot be combined.
 #'
+#' This is the extension point. A package with its own substances needs only a
+#' data frame of parameters; the identity table is optional and is derived from
+#' whatever the other tables declare, so adding a substance can be as short as
+#' one row. Inherit from `"substances"` to keep the shipped registry and add to
+#' it, or omit `inherit` for a registry that contains only your own entries.
+#'
 #' @param name Name of the system. Must be unique within the session.
 #' @param substances,synonyms,parameters,conversions,sources Data frames with
-#'   the registry columns. Missing tables are created empty.
+#'   the registry columns. Missing tables are created empty. If `substances` is
+#'   omitted, an identity row is created for every `substance_id` the other
+#'   tables mention.
 #' @param inherit Name of a system to inherit entries from, or `NULL`. Entries
 #'   in this system take precedence.
 #'
 #' @return A `substance_system` object, invisibly registered under `name`.
+#'
+#' @examples
+#' # a downstream package's whole registration, from one data frame
+#' substance_system("example_pkg", inherit = "substances", parameters = data.frame(
+#'   substance_id = "widgetol",
+#'   parameter    = "molar_mass",
+#'   value        = 100,
+#'   unit         = "g/mol",
+#'   source_id    = "internal-spec"))
+#'
+#' set_units(substance(1, "mg/dL", "widgetol", system = "example_pkg"), "mmol/L")
 #' @export
 substance_system <- function(name, substances = NULL, synonyms = NULL,
                              parameters = NULL, conversions = NULL,
@@ -60,6 +80,18 @@ substance_system <- function(name, substances = NULL, synonyms = NULL,
                  sources = sources)
   for (tbl in registry_tables)
     tables[[tbl]] <- coerce_registry_table(tables[[tbl]], tbl)
+
+  # An identity table is bookkeeping, not information, when the caller has only
+  # a handful of substances to declare. Derive it rather than demand it.
+  if (!nrow(tables$substances)) {
+    declared <- unique(unlist(lapply(
+      tables[c("synonyms", "parameters", "conversions")], `[[`, "substance_id")))
+    declared <- declared[!is.na(declared)]
+    if (length(declared))
+      tables$substances <- coerce_registry_table(
+        data.frame(substance_id = declared, name = declared,
+                   stringsAsFactors = FALSE), "substances")
+  }
 
   if (!is.null(inherit)) {
     parent <- get_system(inherit)
@@ -88,9 +120,10 @@ coerce_registry_table <- function(x, tbl) {
   for (nm in missing_cols) x[[nm]] <- NA_character_
   x <- x[, cols, drop = FALSE]
   # numeric columns stay numeric; everything else is character
-  for (nm in intersect(c("value", "slope", "intercept"), cols))
+  numeric_cols <- c("value", "slope", "intercept")
+  for (nm in intersect(numeric_cols, cols))
     x[[nm]] <- as.numeric(x[[nm]])
-  for (nm in setdiff(cols, c("value", "slope", "intercept")))
+  for (nm in setdiff(cols, numeric_cols))
     x[[nm]] <- as.character(x[[nm]])
   if ("status" %in% cols) x$status[is.na(x$status)] <- "ok"
   x
@@ -98,11 +131,11 @@ coerce_registry_table <- function(x, tbl) {
 
 ## Natural key per table, used to let an inheriting system override its parent.
 registry_keys <- list(
-  substances  = "substance_id",
-  synonyms    = "synonym",
-  parameters  = c("substance_id", "parameter"),
-  conversions = c("substance_id", "from_unit", "to_unit"),
-  sources     = "source_id"
+  substances    = "substance_id",
+  synonyms      = "synonym",
+  parameters    = c("substance_id", "parameter"),
+  conversions   = c("substance_id", "from_unit", "to_unit"),
+  sources       = "source_id"
 )
 
 dedupe_registry <- function(x, tbl) {

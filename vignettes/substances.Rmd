@@ -138,41 +138,92 @@ both:
 set_units(substance(1, "mg/dL", "sodium"), "meq/L")
 ```
 
-### Density, and the molar volume it implies
+### Volume: density for condensed phases, molar volume for gases
 
-Densities of the elements at their standard state are registered, so mass and
-volume are bridged too:
+Which parameter bridges volume depends on the state of the substance, and the
+distinction is not cosmetic.
+
+For a **solid or liquid**, density links mass and volume directly:
 
 ```{r}
 set_units(substance(19.3, "g", "gold"), "cm^3")
 ```
 
-Combined with the atomic weight, density gives the molar volume — molar mass
-times the reciprocal of density, a two-parameter path:
+and combining it with the atomic weight gives the molar volume, a two-parameter
+path:
 
 ```{r}
 set_units(substance(1, "mol", "gold"), "cm^3")
-set_units(substance(1, "mol", "sodium"), "cm^3")
+set_units(substance(1, "mol", "mercury"), "cm^3")
 ```
 
-Gas densities are recorded at STP, and the arithmetic comes out where it should.
-A monatomic gas occupies the full molar volume; a diatomic one occupies half of
-it *per mole of atoms*, because the registry's molar mass is atomic while the
-density is of the bulk material:
+For a **gas**, that route is the wrong one. Avogadro's law says a mole of any
+gas occupies the same volume at the same temperature and pressure, so the bridge
+from amount to volume is the molar volume, and it is very nearly not
+substance-specific at all:
 
 ```{r}
-set_units(substance(1, "mol", "helium"),   "L")
-set_units(substance(1, "mol", "hydrogen"), "L")
+set_units(substance(1, "mol", "helium"),     "L")
+set_units(substance(1, "mol", "neon"),       "L")
+set_units(substance(1, "mol", "dihydrogen"), "L")
+set_units(substance(1, "mol", "dinitrogen"), "L")
 ```
 
-That is not a fudge: a mole of H atoms is half a mole of H~2~, which is half of
-22.4 L. Mass is conserved whatever the molecular form, so a bulk density and an
-atomic molar mass stay consistent. The reference conditions matter enormously
-for a gas, so they are recorded rather than assumed:
+Deriving volume from mass instead would make that look substance-specific, and
+it would quietly answer a different question. A tabulated element density is a
+property of the element **in its standard state** — which for hydrogen is H~2~ —
+while the atomic weight describes a single atom. Multiply one by the other and
+you get the volume per mole of *atoms*: 11.2 L for hydrogen, half a molar
+volume, and a quantity nobody wants, because monatomic hydrogen is not something
+you can have.
+
+So the atomic entries of the diatomic elements carry no volume bridge, and say
+why:
+
+```{r, error = TRUE}
+set_units(substance(1, "mol", "hydrogen"), "L")
+```
 
 ```{r}
 substance_info("hydrogen")
 ```
+
+Elements that are not naturally or typically handled in elemental form —
+technetium, the transuranics — are left out of this entirely rather than
+carrying a density nobody can use.
+
+### The element and the substance it comes as
+
+That leaves H and H~2~ as two entries, which is the honest position: they are
+different substances with different molar masses, and only one of them is
+something you can put in a flask. H~2~ carries both bridges — molar mass as a
+molecule, molar volume as a gas:
+
+```{r}
+h2 <- substance(1, "mol", "dihydrogen")
+
+set_units(h2, "g")   # molar mass, as a molecule
+set_units(h2, "L")   # molar volume, as a gas
+```
+
+while H carries only the atomic weight, which is what an elemental analysis
+reports:
+
+```{r}
+set_units(substance(1, "mol", "hydrogen"), "g")
+```
+
+Converting *between* the two — one mole of H~2~ contains two moles of H — is
+deliberately not offered. Once a package converts H~2~ to H it is expected to
+convert CO~2~ to C, glucose to carbon, and reactants to products, and that is a
+different package. Quantities of different substances simply do not combine:
+
+```{r, error = TRUE}
+substance(2, "mol", "carbon_dioxide") + substance(8, "mol", "water")
+```
+
+If a project needs a particular relationship, it registers the substance it
+actually measures and converts within it, which is the next section.
 
 ### Not everything is a molar mass
 
@@ -279,26 +330,46 @@ expression fails before either runs.
 Only `*` and `/` are defined against a bare `units` quantity: adding something
 with no substance to something with one is refused rather than guessed at.
 
-## Isolated conversion systems
+## Bringing your own substances
 
-Because the substance lives in R data rather than global udunits state, several
-registries coexist in one session. A project can add or override entries without
-touching anyone else's session, and vectors from different systems refuse to
-combine.
+The registry here covers common chemistry and a working clinical set. It is not
+meant to be exhaustive, and it is not the only registry you can have. A package
+or a project supplies its own with a data frame:
 
 ```{r}
-substance_system(
-  "my_project", inherit = "substances",
-  substances = data.frame(substance_id = "widgetol", name = "Widgetol"),
-  parameters = data.frame(substance_id = "widgetol", parameter = "molar_mass",
-                          value = 100, unit = "g/mol", status = "ok"))
+my_substances <- data.frame(
+  substance_id = c("widgetol", "widgetol", "sprocketase"),
+  parameter    = c("molar_mass", "density", "molar_mass"),
+  value        = c(100, 1.2, 250),
+  unit         = c("g/mol", "g/mL", "g/mol"),
+  source_id    = "internal-spec")
+
+substance_system("my_project", inherit = "substances",
+                 parameters = my_substances)
 
 set_units(substance(1, "mg/dL", "widgetol", system = "my_project"), "mmol/L")
-
-# the default registry is untouched
-tryCatch(substance(1, "mg/dL", "widgetol"),
-         error = function(e) conditionMessage(e))
+set_units(substance(120, "g", "widgetol", system = "my_project"), "mL")
 ```
+
+There is no identity table in that call. One is derived from the
+`substance_id`s the parameters mention, so registering a substance is a row, not
+a schema. Supply `substances` explicitly when you want names, formulae and
+identifiers as well — the shipped registry does — and the referential check will
+then hold you to it.
+
+`inherit = "substances"` keeps everything above and adds to it; omit it for a
+registry containing only your own entries. Either way the default registry is
+untouched, and vectors from different systems refuse to combine, so one
+project's definitions cannot leak into another's session:
+
+```{r, error = TRUE}
+substance(1, "mg/dL", "widgetol")
+```
+
+Synonyms and conversions extend the same way: a `synonyms` data frame maps your
+study's labels onto substance ids, and a `conversions` data frame adds affine or
+factor relationships that no parameter can derive. Nothing about that machinery
+is specific to the substances shipped here.
 
 ## What is out of scope
 

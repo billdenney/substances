@@ -124,8 +124,14 @@ drop_substance <- function(x) {
   out
 }
 
+## Accepts either a substance vector or anything as_symbolic_units() understands,
+## so callers can compare a vector's unit against a plain string.
 unit_label <- function(x) {
-  sym <- if (inherits(x, "substance")) substance_unit(x) else as_symbolic_units(x)
+  if (inherits(x, "substance")) {
+    sym <- substance_unit(x)
+  } else {
+    sym <- as_symbolic_units(x)
+  }
   as.character(sym)
 }
 

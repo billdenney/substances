@@ -173,9 +173,17 @@ substance_arith_units <- function(op, s, q, reverse) {
          "\n  Give the other operand a substance, or use drop_substance().",
          call. = FALSE)
   }
+  ## Hand the arithmetic to `units` by stripping the substance, then put it
+  ## back. `reverse` says the units quantity was written first, and `/` does not
+  ## commute, so the operands go in the order the caller wrote them.
   sq <- drop_substance(s)
-  combined <- if (reverse) get(op, envir = baseenv())(q, sq)
-              else get(op, envir = baseenv())(sq, q)
+  base_op <- get(op, envir = baseenv())
+  if (reverse) {
+    combined <- base_op(q, sq)
+  } else {
+    combined <- base_op(sq, q)
+  }
+
   new_substance(as.numeric(combined),
                 vctrs::vec_recycle(vctrs::field(s, "substance"),
                                    length(combined)),

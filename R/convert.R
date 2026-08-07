@@ -48,21 +48,20 @@ bridge_factor <- function(from, to, params, max_power = 1L, tolerance = 1e-9) {
       }
     }
 
-    ## If that landed on something commensurable with `to`, converting it gives
-    ## the factor. udunits errors rather than returning FALSE on some malformed
-    ## units, hence the tryCatch.
-    factor <- tryCatch({
-      if (units::ud_are_convertible(units::deparse_unit(q), to)) {
-        as.numeric(units::set_units(q, to, mode = "standard"))
-      } else {
-        NULL
-      }
-    }, error = function(e) NULL)
-
-    if (!is.null(factor)) {
-      hits[[length(hits) + 1L]] <- list(
-        factor = factor, powers = stats::setNames(p, names(params)))
+    ## Did that land on something commensurable with `to`? udunits errors
+    ## rather than returning FALSE on some malformed units, hence the tryCatch.
+    convertible <- tryCatch(
+      units::ud_are_convertible(units::deparse_unit(q), to),
+      error = function(e) FALSE)
+    if (!isTRUE(convertible)) {
+      next
     }
+
+    ## `q` is one unit of `from` times the parameters, so converting it to `to`
+    ## gives the conversion factor directly.
+    hits[[length(hits) + 1L]] <- list(
+      factor = as.numeric(units::set_units(q, to, mode = "standard")),
+      powers = stats::setNames(p, names(params)))
   }
 
   if (!length(hits)) {
@@ -127,17 +126,32 @@ find_explicit <- function(substance_id, from, to, system) {
 
 apply_explicit <- function(conv, values) {
   if (!identical(conv$status, "ok")) {
+    explanation <- ""
+    if (!is.na(conv$note) && nzchar(conv$note)) {
+      explanation <- paste0(": ", conv$note)
+    }
     stop("the conversion ", conv$from_unit, " -> ", conv$to_unit, " for '",
-         conv$substance_id, "' is marked \"", conv$status, "\"",
-         if (!is.na(conv$note) && nzchar(conv$note)) paste0(": ", conv$note),
+         conv$substance_id, "' is marked \"", conv$status, "\"", explanation,
          "\n  Refusing to apply it.", call. = FALSE)
   }
+  if (!conv$kind %in% c("affine", "factor")) {
+    stop("unsupported conversion kind: ", conv$kind, call. = FALSE)
+  }
+
+  ## A `factor` conversion is an affine one with no offset, so both kinds run
+  ## through the same arithmetic.
   slope <- conv$slope
-  intercept <- if (is.na(conv$intercept)) 0 else conv$intercept
-  switch(conv$kind,
-    affine = ,
-    factor = if (isTRUE(conv$reverse)) (values - intercept) / slope else values * slope + intercept,
-    stop("unsupported conversion kind: ", conv$kind, call. = FALSE))
+  intercept <- conv$intercept
+  if (is.na(intercept)) {
+    intercept <- 0
+  }
+
+  if (isTRUE(conv$reverse)) {
+    out <- (values - intercept) / slope
+  } else {
+    out <- values * slope + intercept
+  }
+  out
 }
 
 convert_substance <- function(x, to) {
@@ -156,7 +170,13 @@ convert_substance <- function(x, to) {
   unresolved <- character(0)
 
   for (id in unique(ids)) {
-    rows <- if (is.na(id)) is.na(ids) else !is.na(ids) & ids == id
+    ## `ids` may hold NA for elements whose substance is unknown, and NA == id
+    ## would give NA rather than a usable selector, so match those separately.
+    if (is.na(id)) {
+      rows <- is.na(ids)
+    } else {
+      rows <- !is.na(ids) & ids == id
+    }
 
     # An explicit conversion takes precedence over a dimensional one: %
     # and mmol/mol are both dimensionless, so HbA1c would otherwise convert

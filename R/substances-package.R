@@ -41,6 +41,3 @@ NULL
 ## substance methods are useless without the generic.
 #' @export
 units::set_units
-
-#' @export
-units::drop_units

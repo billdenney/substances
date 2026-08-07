@@ -48,12 +48,7 @@ bridge_factor <- function(from, to, params, max_power = 1L, tolerance = 1e-9) {
       }
     }
 
-    ## Did that land on something commensurable with `to`? udunits errors
-    ## rather than returning FALSE on some malformed units, hence the tryCatch.
-    convertible <- tryCatch(
-      units::ud_are_convertible(units::deparse_unit(q), to),
-      error = function(e) FALSE)
-    if (!isTRUE(convertible)) {
+    if (!are_convertible(units::deparse_unit(q), to)) {
       next
     }
 
@@ -94,24 +89,15 @@ find_explicit <- function(substance_id, from, to, system) {
   if (is.na(substance_id)) {
     return(NULL)
   }
+  ## `from` and `to` arrive already normalised; validate_system() has checked
+  ## that every registered unit string parses, so both sides compare directly.
   cv <- system$conversions
-  if (!nrow(cv)) {
-    return(NULL)
-  }
   cv <- cv[cv$substance_id == substance_id, , drop = FALSE]
   if (!nrow(cv)) {
     return(NULL)
   }
-  norm <- function(u) {
-    vapply(u, function(z) {
-      tryCatch(unit_label(z), error = function(e) NA_character_)
-    }, character(1),
-      USE.NAMES = FALSE)
-  }
-  cv$from_norm <- norm(cv$from_unit)
-  cv$to_norm <- norm(cv$to_unit)
-  from <- unit_label(from)
-    to <- unit_label(to)
+  cv$from_norm <- unit_labels(cv$from_unit)
+  cv$to_norm <- unit_labels(cv$to_unit)
 
   fwd <- which(cv$from_norm == from & cv$to_norm == to)
   if (length(fwd)) {
@@ -134,7 +120,7 @@ apply_explicit <- function(conv, values) {
          conv$substance_id, "' is marked \"", conv$status, "\"", explanation,
          "\n  Refusing to apply it.", call. = FALSE)
   }
-  if (!conv$kind %in% c("affine", "factor")) {
+  if (!conv$kind %in% conversion_kinds) {
     stop("unsupported conversion kind: ", conv$kind, call. = FALSE)
   }
 
@@ -209,10 +195,34 @@ convert_substance <- function(x, to) {
          paste(unique(unresolved), collapse = ", "),
          "\n  `units` cannot relate these dimensions, and the registry has no ",
          "parameter or explicit conversion that bridges them.",
+         withheld_note(unique(unresolved), system),
          "\n  See substance_info() for what is registered.", call. = FALSE)
   }
 
   new_substance(values, ids, to_sym, substance_system_of(x))
+}
+
+## When a bridge is missing because a parameter was deliberately withheld, the
+## registry knows why. substance_parameters() has already filtered those rows
+## out by the time conversion fails, so recover them for the message rather
+## than reporting the same "nothing bridges them" as for a substance the
+## registry has never heard of.
+withheld_note <- function(ids, system) {
+  p <- system$parameters
+  p <- p[p$substance_id %in% ids & !p$status %in% "ok", , drop = FALSE]
+  if (!nrow(p)) {
+    return("")
+  }
+  described <- vapply(seq_len(nrow(p)), function(i) {
+    note <- p$note[i]
+    if (is.na(note) || !nzchar(note)) {
+      note <- "no reason recorded"
+    }
+    paste0("\n    ", p$substance_id[i], " ", p$parameter[i], " [", p$status[i],
+           "] ", note)
+  }, character(1))
+  paste0("\n  The registry withholds a parameter that would have bridged them:",
+         paste(described, collapse = ""))
 }
 
 #' Convert a substance vector to another unit
@@ -269,16 +279,21 @@ substance_convertible <- function(from, to, substance = NA_character_,
                                   system = NULL) {
   system <- get_system(system)
   from <- unit_label(from)
-    to <- unit_label(to)
+  to <- unit_label(to)
   if (identical(from, to)) {
     return(TRUE)
   }
   id <- substance_resolve(substance, system)
-  if (!is.null(find_explicit(id, from, to, system))) {
-    return(TRUE)
+
+  ## Answer the question set_units() will actually ask, in the order it asks
+  ## it. A registered conversion only counts if it is one apply_explicit()
+  ## would run: reporting TRUE for a disputed or unsupported row would promise
+  ## a conversion that always throws.
+  conv <- find_explicit(id, from, to, system)
+  if (!is.null(conv)) {
+    return(identical(conv$status, "ok") && conv$kind %in% conversion_kinds)
   }
-  if (isTRUE(tryCatch(units::ud_are_convertible(from, to),
-                      error = function(e) FALSE))) {
+  if (are_convertible(from, to)) {
     return(TRUE)
   }
   if (is.na(id)) {

@@ -2,18 +2,28 @@
 % Please edit documentation in R/data.R
 \name{substance_load_default}
 \alias{substance_load_default}
-\title{Build the conversion system shipped with the package}
+\title{Build a conversion system from a directory of CSVs}
 \usage{
-substance_load_default(name = "substances", path = NULL)
+substance_load_default(name = "substances", path = NULL, ...)
 }
 \arguments{
-\item{name}{Name to register it under.}
+\item{name}{Name to register the system under.}
 
-\item{path}{Directory holding the CSVs.}
+\item{path}{Directory holding the CSVs; defaults to the installed \code{extdata}.}
+
+\item{...}{Passed to \code{\link[=substance_system]{substance_system()}}, so \code{inherit}, \code{parameter_units}
+and \code{overwrite} work here too.}
 }
 \value{
 A \code{substance_system}, invisibly.
 }
 \description{
-Build the conversion system shipped with the package
+Reads whichever of the registry tables are present and registers them as a
+system. The package's own registry is one use of this, not the only one: a
+project keeping its substances in version control can ship a directory with
+as little as \code{substance_parameters.csv} in it and load it the same way.
+}
+\examples{
+# the shipped registry, rebuilt under another name
+substance_load_default("a_copy")
 }

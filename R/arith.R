@@ -12,9 +12,11 @@ same_substance_or_stop <- function(x, y, op) {
   if (anyNA(sx) || anyNA(sy)) {
     stop("cannot use `", op, "` when the substance is unknown", call. = FALSE)
   }
-  n <- max(length(sx), length(sy))
-  sx <- rep_len(sx, n)
-    sy <- rep_len(sy, n)
+  ## Recycle by the same rule the arithmetic that follows will use, so the
+  ## guard cannot accept a pair of lengths the operation then rejects.
+  common <- vctrs::vec_recycle_common(sx, sy)
+  sx <- common[[1L]]
+  sy <- common[[2L]]
   bad <- sx != sy
   if (any(bad)) {
     stop("cannot use `", op, "` on different substances: ",
@@ -190,25 +192,30 @@ substance_arith_units <- function(op, s, q, reverse) {
                 units(combined), substance_system_of(s))
 }
 
-#' @export
-sum.substance <- function(..., na.rm = FALSE) {
-  x <- vctrs::vec_c(...)
-  ids <- unique(stats::na.omit(vctrs::field(x, "substance")))
-  if (length(ids) != 1L) {
-    stop("cannot sum a `substance` vector holding ", length(ids),
+## Collapsing a vector to one number only means something if every element is
+## the same substance. NA is refused rather than dropped, matching `+`: an
+## unknown substance is not evidence that the rest are alike.
+substance_reduce <- function(x, f, verb, na.rm) {
+  ids <- vctrs::field(x, "substance")
+  if (anyNA(ids)) {
+    stop("cannot ", verb, " a `substance` vector when the substance is unknown",
+         call. = FALSE)
+  }
+  distinct <- unique(ids)
+  if (length(distinct) != 1L) {
+    stop("cannot ", verb, " a `substance` vector holding ", length(distinct),
          " substances; split by substance first.", call. = FALSE)
   }
-  new_substance(sum(vctrs::field(x, "value"), na.rm = na.rm), ids,
+  new_substance(f(vctrs::field(x, "value"), na.rm = na.rm), distinct,
                 substance_unit(x), substance_system_of(x))
 }
 
 #' @export
+sum.substance <- function(..., na.rm = FALSE) {
+  substance_reduce(vctrs::vec_c(...), sum, "sum", na.rm)
+}
+
+#' @export
 mean.substance <- function(x, ..., na.rm = FALSE) {
-  ids <- unique(stats::na.omit(vctrs::field(x, "substance")))
-  if (length(ids) != 1L) {
-    stop("cannot average a `substance` vector holding ", length(ids),
-         " substances; split by substance first.", call. = FALSE)
-  }
-  new_substance(mean(vctrs::field(x, "value"), na.rm = na.rm), ids,
-                substance_unit(x), substance_system_of(x))
+  substance_reduce(x, mean, "average", na.rm)
 }

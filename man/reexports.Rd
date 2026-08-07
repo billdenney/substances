@@ -4,7 +4,6 @@
 \name{reexports}
 \alias{reexports}
 \alias{set_units}
-\alias{drop_units}
 \title{Objects exported from other packages}
 \keyword{internal}
 \description{
@@ -12,6 +11,6 @@ These objects are imported from other packages. Follow the links
 below to see their documentation.
 
 \describe{
-  \item{units}{\code{\link[units:drop_units]{drop_units()}}, \code{\link[units:set_units]{set_units()}}}
+  \item{units}{\code{\link[units:set_units]{set_units()}}}
 }}
 

@@ -23,6 +23,12 @@ unit_is_defined <- function(symbol) {
   }, error = function(e) FALSE)
 }
 
+## udunits raises on a unit string it cannot parse rather than reporting the two
+## as unrelated, so every convertibility question has to be asked this way.
+are_convertible <- function(from, to) {
+  isTRUE(tryCatch(units::ud_are_convertible(from, to), error = function(e) FALSE))
+}
+
 install_extra_units <- function() {
   installed <- character(0)
   for (i in seq_len(nrow(substances_extra_units))) {

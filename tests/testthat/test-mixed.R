@@ -103,3 +103,21 @@ test_that("the default symbols mode accepts a bare unit expression", {
   expect_equal(as.numeric(set_units(m, mmol/L)), c(5.5507, 5.5),
                tolerance = 1e-4)
 })
+
+test_that("unit validation is per distinct string, not per element", {
+  # a long column repeats a handful of units thousands of times; validating
+  # each row made construction the slowest step in the package
+  units_rep <- rep(c("mg/dL", "mmol/L"), each = 5000)
+  elapsed <- system.time(
+    mixed_substances(seq_along(units_rep), units_rep, "glucose"))[["elapsed"]]
+  expect_lt(elapsed, 1)
+
+  # and the message still names every distinct bad string, once
+  err <- tryCatch(mixed_substances(1:4, c("mg/dL", "frac of 1", "Hb Fract.",
+                                          "frac of 1"), "glucose"),
+                  error = conditionMessage)
+  expect_match(err, "frac of 1", fixed = TRUE)
+  expect_match(err, "Hb Fract.", fixed = TRUE)
+  expect_equal(lengths(regmatches(err, gregexpr("frac of 1", err, fixed = TRUE))),
+               1L)
+})

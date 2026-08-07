@@ -12,7 +12,8 @@ substance_system(
   conversions = NULL,
   sources = NULL,
   parameter_units = NULL,
-  inherit = NULL
+  inherit = NULL,
+  overwrite = FALSE
 )
 }
 \arguments{
@@ -31,7 +32,12 @@ conversion machinery is indifferent to what a kind means; it only needs the
 units to be right.}
 
 \item{inherit}{Name of a system to inherit entries from, or \code{NULL}. Entries
-in this system take precedence.}
+in this system take precedence, and so do the parameter kinds it declares.}
+
+\item{overwrite}{Replace an already-registered system of the same name. A
+\code{substance} vector records only its system's name, so replacing a system
+changes what every existing vector of that system means; registering over
+an existing name is an error unless this is \code{TRUE}.}
 }
 \value{
 A \code{substance_system} object, invisibly registered under \code{name}.

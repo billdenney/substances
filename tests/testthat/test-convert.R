@@ -144,15 +144,17 @@ test_that("a conversion marked other than ok is refused with its note", {
   expect_error(set_units(x, "nmol/L"), "isoform size varies", fixed = TRUE)
 })
 
-test_that("an unsupported conversion kind is an error, not a silent skip", {
-  substance_system("badkind_sys",
-    substances = data.frame(substance_id = "x", name = "X"),
-    conversions = data.frame(substance_id = "x", from_unit = "mg/dL",
-                             to_unit = "nmol/L", kind = "spline", slope = 2,
-                             intercept = NA, status = "ok", source_id = NA,
-                             note = NA))
-  x <- substance(1, "mg/dL", "x", system = "badkind_sys")
-  expect_error(set_units(x, "nmol/L"), "unsupported conversion kind", fixed = TRUE)
+test_that("an unsupported conversion kind is refused when the system is built", {
+  # caught at registration rather than at conversion, so a registry cannot sit
+  # in a session looking usable until someone happens to convert
+  expect_error(
+    substance_system("badkind_sys",
+      substances = data.frame(substance_id = "x", name = "X"),
+      conversions = data.frame(substance_id = "x", from_unit = "mg/dL",
+                               to_unit = "nmol/L", kind = "spline", slope = 2,
+                               intercept = NA, status = "ok", source_id = NA,
+                               note = NA)),
+    "unsupported conversion kind", fixed = TRUE)
 })
 
 test_that("a plain factor conversion applies in both directions", {
@@ -221,4 +223,32 @@ test_that("published factors for the wider clinical set are reproduced", {
     expect_equal(got, cs[[4]], tolerance = 5e-3,
                  info = paste(cs[[1]], cs[[2]], "->", cs[[3]]))
   }
+})
+
+test_that("substance_convertible() refuses what set_units() would throw on", {
+  # the two used to disagree: a disputed row reported TRUE and then errored
+  substance_system("conv_disputed",
+    substances = data.frame(substance_id = "x", name = "X"),
+    conversions = data.frame(substance_id = "x", from_unit = "mg/dL",
+                             to_unit = "nmol/L", kind = "factor", slope = 2,
+                             status = "disputed", note = "not settled"))
+  expect_false(substance_convertible("mg/dL", "nmol/L", "x",
+                                     system = "conv_disputed"))
+  expect_error(set_units(substance(1, "mg/dL", "x", system = "conv_disputed"),
+                         "nmol/L"),
+               "is marked \"disputed\"", fixed = TRUE)
+})
+
+test_that("a failed conversion quotes the withheld parameter and its reason", {
+  # the registry has a great deal to say about Lp(a); it used to say none of it
+  err <- tryCatch(set_units(substance(50, "mg/dL", "Lp(a)"), "nmol/L"),
+                  error = conditionMessage)
+  expect_match(err, "withholds a parameter", fixed = TRUE)
+  expect_match(err, "disputed", fixed = TRUE)
+  expect_match(err, "isoform size varies", fixed = TRUE)
+
+  # and a substance the registry simply lacks says only that
+  err2 <- tryCatch(set_units(substance(1, "mg/dL", "hba1c"), "mmol/L"),
+                   error = conditionMessage)
+  expect_false(grepl("withholds a parameter", err2, fixed = TRUE))
 })

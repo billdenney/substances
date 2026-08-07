@@ -28,19 +28,34 @@ substance_read_csv <- function(table, path = NULL) {
   out
 }
 
-#' Build the conversion system shipped with the package
+#' Build a conversion system from a directory of CSVs
 #'
-#' @param name Name to register it under.
-#' @param path Directory holding the CSVs.
+#' Reads whichever of the registry tables are present and registers them as a
+#' system. The package's own registry is one use of this, not the only one: a
+#' project keeping its substances in version control can ship a directory with
+#' as little as `substance_parameters.csv` in it and load it the same way.
+#'
+#' @param name Name to register the system under.
+#' @param path Directory holding the CSVs; defaults to the installed `extdata`.
+#' @param ... Passed to [substance_system()], so `inherit`, `parameter_units`
+#'   and `overwrite` work here too.
 #' @return A `substance_system`, invisibly.
+#'
+#' @examples
+#' # the shipped registry, rebuilt under another name
+#' substance_load_default("a_copy")
 #' @export
-substance_load_default <- function(name = "substances", path = NULL) {
-  tables <- lapply(stats::setNames(registry_tables, registry_tables),
-                   substance_read_csv, path = path)
-  substance_system(name,
-                   substances = tables$substances,
-                   synonyms = tables$synonyms,
-                   parameters = tables$parameters,
-                   conversions = tables$conversions,
-                   sources = tables$sources)
+substance_load_default <- function(name = "substances", path = NULL, ...) {
+  if (is.null(path)) {
+    path <- system.file("extdata", package = "substances", mustWork = TRUE)
+  }
+  present <- registry_tables[file.exists(file.path(path, registry_files))]
+  if (!length(present)) {
+    stop("no registry CSV found in ", path,
+         "\n  Expected at least one of: ",
+         paste(unlist(registry_files), collapse = ", "), call. = FALSE)
+  }
+  tables <- lapply(stats::setNames(present, present), substance_read_csv,
+                   path = path)
+  do.call(substance_system, c(list(name), tables, list(...)))
 }

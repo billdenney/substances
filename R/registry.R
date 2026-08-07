@@ -1,7 +1,5 @@
 substances_env <- new.env(parent = emptyenv())
 
-registry_tables <- c("substances", "synonyms", "parameters", "conversions", "sources")
-
 registry_files <- list(
   substances  = "substances.csv",
   synonyms    = "substance_synonyms.csv",
@@ -9,6 +7,9 @@ registry_files <- list(
   conversions = "substance_conversions.csv",
   sources     = "sources.csv"
 )
+
+## Derived, so a table cannot be added to one list and forgotten in the other.
+registry_tables <- names(registry_files)
 
 registry_columns <- list(
   substances  = c("substance_id", "name", "formula", "cas", "inchikey", "pubchem_cid"),
@@ -71,7 +72,11 @@ substance_parameter_units <- c(
 #'   conversion machinery is indifferent to what a kind means; it only needs the
 #'   units to be right.
 #' @param inherit Name of a system to inherit entries from, or `NULL`. Entries
-#'   in this system take precedence.
+#'   in this system take precedence, and so do the parameter kinds it declares.
+#' @param overwrite Replace an already-registered system of the same name. A
+#'   `substance` vector records only its system's name, so replacing a system
+#'   changes what every existing vector of that system means; registering over
+#'   an existing name is an error unless this is `TRUE`.
 #'
 #' @return A `substance_system` object, invisibly registered under `name`.
 #'
@@ -102,26 +107,22 @@ substance_parameter_units <- c(
 substance_system <- function(name, substances = NULL, synonyms = NULL,
                              parameters = NULL, conversions = NULL,
                              sources = NULL, parameter_units = NULL,
-                             inherit = NULL) {
+                             inherit = NULL, overwrite = FALSE) {
   stopifnot(is.character(name), length(name) == 1L, nzchar(name))
-  tables <- list(substances = substances, synonyms = synonyms,
-                 parameters = parameters, conversions = conversions,
-                 sources = sources)
+  systems <- get("systems", envir = substances_env)
+  if (name %in% names(systems) && !isTRUE(overwrite)) {
+    stop("a conversion system named '", name, "' is already registered.",
+         "\n  Re-registering it would change what every existing `substance` ",
+         "vector of that system means, since a vector records only the name.",
+         "\n  Pass overwrite = TRUE if that is what you intend.", call. = FALSE)
+  }
+
+  tables <- mget(registry_tables, environment())
   for (tbl in registry_tables) {
     tables[[tbl]] <- coerce_registry_table(tables[[tbl]], tbl)
   }
 
-  ## Locally declared kinds win over the built-ins, so a system can also
-  ## redefine what units an existing kind requires.
-  kinds <- substance_parameter_units
-  if (length(parameter_units)) {
-    if (is.null(names(parameter_units)) || anyNA(names(parameter_units)) ||
-          !all(nzchar(names(parameter_units)))) {
-      stop("`parameter_units` must be a named character vector, as ",
-           "c(kind = \"units\")", call. = FALSE)
-    }
-    kinds[names(parameter_units)] <- as.character(parameter_units)
-  }
+  kinds <- declared_kinds(parameter_units)   # this system's own declarations
 
   # An identity table is bookkeeping, not information, when the caller has only
   # a handful of substances to declare. Derive it rather than demand it.
@@ -142,18 +143,40 @@ substance_system <- function(name, substances = NULL, synonyms = NULL,
     for (tbl in registry_tables) {
       tables[[tbl]] <- dedupe_registry(rbind(tables[[tbl]], parent[[tbl]]), tbl)
     }
-    inherited <- parent$parameter_units
-    kinds <- c(kinds, inherited[setdiff(names(inherited), names(kinds))])
+    ## Kinds inherit by the same rule as the tables: local wins over parent.
+    ## Letting the built-ins win here would silently discard a parent's
+    ## redefinition and leave the child unbuildable.
+    kinds <- c(kinds, parent$parameter_units)
   }
+  ## Built-ins fill in whatever neither declared, so they are last.
+  kinds <- c(kinds, substance_parameter_units)
+  kinds <- kinds[!duplicated(names(kinds))]
 
   system <- structure(c(list(name = name), tables,
                         list(parameter_units = kinds)),
                       class = "substance_system")
   validate_system(system)
-  systems <- get("systems", envir = substances_env)
+  ## The name lookup is derived, not authored, so build it once here rather
+  ## than rebuilding it on every substance_resolve() call.
+  keys <- lookup_keys(system)
+  system$lookup <- stats::setNames(keys$id, keys$key)[!duplicated(keys$key)]
   systems[[name]] <- system
   assign("systems", systems, envir = substances_env)
   invisible(system)
+}
+
+## The kinds a system declares for itself, validated. Merging with a parent's
+## and with the built-ins is the caller's job, so precedence stays in one place.
+declared_kinds <- function(parameter_units) {
+  if (!length(parameter_units)) {
+    return(character(0))
+  }
+  nms <- names(parameter_units)
+  if (is.null(nms) || anyNA(nms) || !all(nzchar(nms))) {
+    stop("`parameter_units` must be a named character vector, as ",
+         "c(kind = \"units\")", call. = FALSE)
+  }
+  stats::setNames(as.character(parameter_units), nms)
 }
 
 coerce_registry_table <- function(x, tbl) {
@@ -183,6 +206,11 @@ coerce_registry_table <- function(x, tbl) {
   x
 }
 
+## Conversion kinds apply_explicit() knows how to evaluate. `factor` is `affine`
+## with no offset; both are checked here so an unusable row is rejected when the
+## registry is built rather than when someone converts.
+conversion_kinds <- c("affine", "factor")
+
 ## Natural key per table, used to let an inheriting system override its parent.
 registry_keys <- list(
   substances    = "substance_id",
@@ -193,18 +221,26 @@ registry_keys <- list(
 )
 
 dedupe_registry <- function(x, tbl) {
-  key <- do.call(paste, c(lapply(registry_keys[[tbl]], function(k) tolower(x[[k]])),
-                          list(sep = "\r")))
+  key <- as.data.frame(lapply(x[registry_keys[[tbl]]], tolower),
+                       stringsAsFactors = FALSE)
   x[!duplicated(key), , drop = FALSE]
 }
 
+## Every rule here is a property of "a registry", not of the shipped data, so it
+## has to run at registration: a downstream system built from data frames or
+## CSVs gets exactly the same checks the bundled one does. What is left to the
+## test suite is editorial policy about the bundled data -- that its citations
+## are complete, that its withheld values explain themselves -- which a
+## downstream registry is entitled to decide for itself.
 validate_system <- function(system) {
   p <- system$parameters
+  cv <- system$conversions
   kinds <- system$parameter_units
+  where <- paste0(" in system '", system$name, "'")
 
   unknown <- setdiff(unique(p$parameter), names(kinds))
   if (length(unknown)) {
-    stop("unknown parameter kind(s) in system '", system$name, "': ",
+    stop("unknown parameter kind(s)", where, ": ",
          paste(unknown, collapse = ", "),
          "\n  Known kinds: ", paste(names(kinds), collapse = ", "),
          "\n  Declare a new one with the `parameter_units` argument of ",
@@ -212,32 +248,71 @@ validate_system <- function(system) {
   }
 
   ## A parameter with the wrong units is not a bridge, it is a silently wrong
-  ## answer, so check the dimension here rather than at conversion time.
-  for (i in seq_len(nrow(p))) {
-    required <- kinds[[p$parameter[i]]]
-    ok <- isTRUE(tryCatch(units::ud_are_convertible(p$unit[i], required),
-                          error = function(e) FALSE))
-    if (!ok) {
-      stop("parameter '", p$parameter[i], "' for '", p$substance_id[i],
-           "' has units ", p$unit[i], ", which are not convertible to ",
-           required, " as that kind requires.", call. = FALSE)
+  ## answer, so check the dimension here rather than at conversion time. Only
+  ## the distinct (unit, kind) pairs need checking, not every row.
+  pairs <- unique(data.frame(unit = p$unit, kind = p$parameter,
+                             stringsAsFactors = FALSE))
+  for (i in seq_len(nrow(pairs))) {
+    required <- kinds[[pairs$kind[i]]]
+    if (!are_convertible(pairs$unit[i], required)) {
+      bad <- p$substance_id[p$unit == pairs$unit[i] & p$parameter == pairs$kind[i]]
+      stop("parameter '", pairs$kind[i], "' for '", bad[1L], "' has units ",
+           pairs$unit[i], ", which are not convertible to ", required,
+           " as that kind requires.", call. = FALSE)
     }
+  }
+
+  ## A unit string udunits cannot parse makes a conversion row unreachable
+  ## rather than wrong, which is worse: it never matches and never complains.
+  bad_unit <- unique(c(cv$from_unit, cv$to_unit))
+  bad_unit <- bad_unit[!is.na(bad_unit)]
+  bad_unit <- bad_unit[!vapply(bad_unit, unit_is_defined, logical(1))]
+  if (length(bad_unit)) {
+    stop("conversion unit(s)", where, " not recognised by udunits: ",
+         paste0("\"", bad_unit, "\"", collapse = ", "), call. = FALSE)
+  }
+
+  usable <- cv$status %in% "ok"
+  bad_kind <- setdiff(unique(cv$kind[usable]), conversion_kinds)
+  if (length(bad_kind)) {
+    stop("unsupported conversion kind(s)", where, ": ",
+         paste(bad_kind, collapse = ", "),
+         "\n  Supported: ", paste(conversion_kinds, collapse = ", "),
+         call. = FALSE)
+  }
+  if (any(usable & is.na(cv$slope))) {
+    stop("conversion(s)", where, " marked \"ok\" with no slope: ",
+         paste(cv$substance_id[usable & is.na(cv$slope)], collapse = ", "),
+         "\n  Every value they touch would become NA.", call. = FALSE)
   }
 
   dup <- duplicated(p[, c("substance_id", "parameter")])
   if (any(dup)) {
-    stop("duplicate (substance_id, parameter) in system '", system$name, "': ",
+    stop("duplicate (substance_id, parameter)", where, ": ",
          paste(unique(paste(p$substance_id[dup], p$parameter[dup])),
                collapse = ", "), call. = FALSE)
   }
 
   ids <- system$substances$substance_id
+  if (anyDuplicated(ids)) {
+    stop("duplicate substance_id", where, ": ",
+         paste(unique(ids[duplicated(ids)]), collapse = ", "), call. = FALSE)
+  }
   for (tbl in c("synonyms", "parameters", "conversions")) {
     orphan <- setdiff(system[[tbl]]$substance_id, ids)
     if (length(orphan)) {
       stop("substance_id(s) in `", tbl, "` with no entry in `substances`: ",
            paste(orphan, collapse = ", "), call. = FALSE)
     }
+  }
+
+  ## One name must mean one substance, or substance_resolve() silently picks
+  ## whichever row came first.
+  keys <- lookup_keys(system)
+  clash <- tapply(keys$id, keys$key, function(z) length(unique(z)))
+  if (any(clash > 1L)) {
+    stop("name(s)", where, " resolving to more than one substance: ",
+         paste(names(clash)[clash > 1L], collapse = ", "), call. = FALSE)
   }
   invisible(system)
 }
@@ -283,6 +358,17 @@ substance_systems <- function() {
   names(get0("systems", envir = substances_env, ifnotfound = list()))
 }
 
+## Every string that names a substance, paired with the id it names. Identity
+## ids and names come before synonyms so a synonym cannot shadow a real name.
+lookup_keys <- function(system) {
+  data.frame(
+    key = tolower(c(system$substances$substance_id, system$substances$name,
+                    system$synonyms$synonym)),
+    id = c(system$substances$substance_id, system$substances$substance_id,
+           system$synonyms$substance_id),
+    stringsAsFactors = FALSE)
+}
+
 #' Resolve a substance name or synonym to its identifier
 #'
 #' Matching is case-insensitive and ignores surrounding whitespace. Unmatched
@@ -295,14 +381,7 @@ substance_systems <- function() {
 substance_resolve <- function(x, system = NULL) {
   system <- get_system(system)
   key <- tolower(trimws(as.character(x)))
-  lookup <- c(
-    stats::setNames(system$substances$substance_id,
-                    tolower(system$substances$substance_id)),
-    stats::setNames(system$substances$substance_id,
-                    tolower(system$substances$name)),
-    stats::setNames(system$synonyms$substance_id,
-                    tolower(system$synonyms$synonym)))
-  lookup <- lookup[!duplicated(names(lookup))]
+  lookup <- system$lookup
   out <- unname(lookup[key])
   out[is.na(key)] <- NA_character_
   out
@@ -317,6 +396,13 @@ substance_resolve <- function(x, system = NULL) {
 #'   [substance_info()] to inspect them.
 #' @export
 substance_parameters <- function(substance_id, system = NULL) {
+  ## One substance at a time: the return value is keyed by parameter name, so a
+  ## vector of ids would silently collapse two substances' molar masses into one
+  ## `molar_mass` entry and hand back whichever came first.
+  if (length(substance_id) != 1L) {
+    stop("`substance_id` must name a single substance, not ",
+         length(substance_id), ".", call. = FALSE)
+  }
   system <- get_system(system)
   p <- system$parameters
   p <- p[p$substance_id %in% substance_id & p$status %in% "ok" & !is.na(p$value), ,

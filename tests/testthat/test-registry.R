@@ -316,3 +316,95 @@ test_that("declared kinds are inherited along with the entries", {
                                               system = "enzymes_child"), "U")),
                1, tolerance = 1e-9)
 })
+
+test_that("a downstream registry gets the same integrity checks as the shipped one", {
+  # each of these built without complaint before validation moved here, and
+  # failed later, somewhere else, or not at all
+  expect_error(
+    substance_system("v_unit",
+      substances = data.frame(substance_id = "x", name = "X"),
+      conversions = data.frame(substance_id = "x", from_unit = "frac of 1",
+                               to_unit = "%", kind = "factor", slope = 2)),
+    "not recognised by udunits", fixed = TRUE)
+
+  expect_error(
+    substance_system("v_slope",
+      substances = data.frame(substance_id = "x", name = "X"),
+      conversions = data.frame(substance_id = "x", from_unit = "mg/dL",
+                               to_unit = "nmol/L", kind = "affine",
+                               slope = NA_real_, intercept = 1)),
+    "marked \"ok\" with no slope", fixed = TRUE)
+
+  expect_error(
+    substance_system("v_dupid",
+      substances = data.frame(substance_id = c("x", "x"), name = c("A", "B"))),
+    "duplicate substance_id", fixed = TRUE)
+
+  expect_error(
+    substance_system("v_clash",
+      substances = data.frame(substance_id = c("a", "b"), name = c("A", "B")),
+      synonyms = data.frame(substance_id = c("a", "b"), synonym = c("Q", "Q"))),
+    "resolving to more than one substance", fixed = TRUE)
+})
+
+test_that("a disputed conversion row may still carry an unsupported kind", {
+  # only rows that could actually run are held to the kind whitelist
+  expect_error(
+    substance_system("v_disputed_kind",
+      substances = data.frame(substance_id = "x", name = "X"),
+      conversions = data.frame(substance_id = "x", from_unit = "mg/dL",
+                               to_unit = "nmol/L", kind = "spline", slope = NA,
+                               status = "disputed", note = "not settled")),
+    NA)
+})
+
+test_that("re-registering a system name is refused unless asked for", {
+  substance_system("reg_once", parameters = data.frame(
+    substance_id = "w", parameter = "molar_mass", value = 100, unit = "g/mol"))
+  v <- substance(1, "g", "w", system = "reg_once")
+  expect_equal(as.numeric(set_units(v, "mol")), 0.01)
+
+  # a vector records only the name, so silently rewriting the system would
+  # change what v means
+  expect_error(
+    substance_system("reg_once", parameters = data.frame(
+      substance_id = "w", parameter = "molar_mass", value = 200, unit = "g/mol")),
+    "already registered", fixed = TRUE)
+  expect_equal(as.numeric(set_units(v, "mol")), 0.01)
+
+  substance_system("reg_once", overwrite = TRUE, parameters = data.frame(
+    substance_id = "w", parameter = "molar_mass", value = 200, unit = "g/mol"))
+  expect_equal(as.numeric(set_units(v, "mol")), 0.005)
+})
+
+test_that("a parent's redefined kind survives into the child", {
+  substance_system("kind_parent", parameter_units = c(activity = "g/mol"),
+    parameters = data.frame(substance_id = "y", parameter = "activity",
+                            value = 1, unit = "g/mol"))
+  expect_error(substance_system("kind_child", inherit = "kind_parent"), NA)
+  expect_equal(get_system("kind_child")$parameter_units[["activity"]], "g/mol")
+})
+
+test_that("substance_load_default() reads whichever tables are present", {
+  dir <- withr_tempdir()
+  utils::write.csv(
+    data.frame(substance_id = "w", parameter = "molar_mass", value = 100,
+               unit = "g/mol", status = "ok", source_id = "spec", note = NA),
+    file.path(dir, "substance_parameters.csv"), row.names = FALSE, na = "")
+
+  substance_load_default("csv_only", path = dir)
+  expect_equal(as.numeric(set_units(substance(1, "g", "w", system = "csv_only"),
+                                    "mol")), 0.01)
+
+  expect_error(substance_load_default("csv_none", path = withr_tempdir()),
+               "no registry CSV found", fixed = TRUE)
+})
+
+test_that("substance_parameters() takes one substance, not a vector", {
+  # the return value is keyed by parameter name, so a vector would collapse two
+  # substances' molar masses into one entry and return whichever came first
+  expect_error(substance_parameters(c("glucose", "sodium")),
+               "must name a single substance", fixed = TRUE)
+  expect_error(substance_parameters(character(0)),
+               "must name a single substance", fixed = TRUE)
+})

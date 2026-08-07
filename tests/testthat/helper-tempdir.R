@@ -1,6 +1,8 @@
-## Minimal stand-in so the tests need no extra dependency.
+## tempfile() already returns a unique path under tempdir(); rolling our own
+## with sample.int() would draw from the RNG stream and shift the seed for
+## whatever test ran next.
 withr_tempdir <- function() {
-  dir <- file.path(tempdir(), paste0("substances-", sample.int(1e6, 1)))
+  dir <- tempfile("substances-")
   dir.create(dir, recursive = TRUE)
   dir
 }

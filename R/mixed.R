@@ -34,32 +34,15 @@ mixed_substances <- function(x = double(), unit = character(),
   substance <- vctrs::vec_recycle(as.character(substance), length(x),
                                   x_arg = "substance")
 
-  bad_unit <- unique(unit[!vapply(unit, unit_is_defined, logical(1))])
-  if (length(bad_unit)) {
-    stop("unit(s) not recognised by udunits: ",
-         paste0("\"", bad_unit, "\"", collapse = ", "),
-         "\n  Normalising unit strings is out of scope for this package; see ",
-         "units::install_unit() for genuinely missing symbols.", call. = FALSE)
-  }
-
-  id <- substance_resolve(substance, system_obj)
-  unknown <- unique(substance[is.na(id) & !is.na(substance)])
-  if (length(unknown)) {
-    stop("unknown substance(s) in system '", system_obj$name, "': ",
-         paste0("\"", unknown, "\"", collapse = ", "), call. = FALSE)
-  }
+  check_units_defined(unit)
+  id <- resolve_or_stop(substance, system_obj)
 
   vctrs::new_rcrd(list(value = x, substance = id, unit = unit),
                   system = system_obj$name, class = "mixed_substances")
 }
 
 #' @export
-format.mixed_substances <- function(x, ...) {
-  sub <- vctrs::field(x, "substance")
-  sub[is.na(sub)] <- "?"
-  paste0(format(vctrs::field(x, "value"), ...), " [",
-         vctrs::field(x, "unit"), "] ", sub)
-}
+format.mixed_substances <- function(x, ...) format_substance_like(x, ...)
 
 #' @export
 vec_ptype_abbr.mixed_substances <- function(x, ...) "mxsub"

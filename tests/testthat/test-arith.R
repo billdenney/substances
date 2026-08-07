@@ -207,3 +207,11 @@ test_that("the MISSING method is reached only by unary operators", {
   # and a unary operator we do not define still errors
   expect_error(!x, class = "vctrs_error_incompatible_op")
 })
+
+test_that("sum and mean refuse an unknown substance, as `+` does", {
+  # these used to na.omit the substance, so sum() succeeded where + errored
+  x <- substance(c(1, 2), "mmol/L", c("glucose", NA))
+  expect_error(sum(x), "substance is unknown", fixed = TRUE)
+  expect_error(mean(x), "substance is unknown", fixed = TRUE)
+  expect_error(x + x, "substance is unknown", fixed = TRUE)
+})

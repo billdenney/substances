@@ -29,14 +29,22 @@ substance <- function(x = double(), unit = units::unitless,
   x <- as.double(x)
   substance <- vctrs::vec_recycle(as.character(substance), length(x),
                                   x_arg = "substance")
-  id <- substance_resolve(substance, system_obj)
-  unknown <- unique(substance[is.na(id) & !is.na(substance)])
+  id <- resolve_or_stop(substance, system_obj)
+  new_substance(x, id, as_symbolic_units(unit), system_obj$name)
+}
+
+## Resolve names to ids, refusing any that the system does not know. Every
+## constructor goes through this so the same mistake reads the same way
+## whichever door it came through.
+resolve_or_stop <- function(x, system) {
+  id <- substance_resolve(x, system)
+  unknown <- unique(x[is.na(id) & !is.na(x)])
   if (length(unknown)) {
-    stop("unknown substance(s) in system '", system_obj$name, "': ",
+    stop("unknown substance(s) in system '", system$name, "': ",
          paste0("\"", unknown, "\"", collapse = ", "),
          "\n  See substance_systems() and substance_resolve().", call. = FALSE)
   }
-  new_substance(x, id, as_symbolic_units(unit), system_obj$name)
+  id
 }
 
 #' @rdname substance
@@ -48,6 +56,21 @@ new_substance <- function(value = double(), substance_id = character(),
                           system_name = substance_default_system()) {
   vctrs::new_rcrd(list(value = value, substance = substance_id),
                   unit = unit_sym, system = system_name, class = "substance")
+}
+
+## Reject unit strings udunits does not know, with a message that says whose
+## job normalising them is. Only the distinct strings need checking: a long
+## column repeats a handful of units thousands of times.
+check_units_defined <- function(unit) {
+  candidates <- unique(unit[!is.na(unit)])
+  bad <- candidates[!vapply(candidates, unit_is_defined, logical(1))]
+  if (length(bad)) {
+    stop("unit(s) not recognised by udunits: ",
+         paste0("\"", bad, "\"", collapse = ", "),
+         "\n  Normalising unit strings is out of scope for this package; see ",
+         "units::install_unit() for genuinely missing symbols.", call. = FALSE)
+  }
+  invisible(unit)
 }
 
 as_symbolic_units <- function(unit) {
@@ -88,13 +111,8 @@ substance_of.default <- function(x) {
 `substance_of<-` <- function(x, value) {
   stopifnot(inherits(x, "substance"))
   value <- vctrs::vec_recycle(as.character(value), length(x))
-  id <- substance_resolve(value, substance_system_of(x))
-  unknown <- unique(value[is.na(id) & !is.na(value)])
-  if (length(unknown)) {
-    stop("unknown substance(s): ", paste0("\"", unknown, "\"", collapse = ", "),
-         call. = FALSE)
-  }
-  vctrs::field(x, "substance") <- id
+  vctrs::field(x, "substance") <-
+    resolve_or_stop(value, get_system(substance_system_of(x)))
   x
 }
 
@@ -135,12 +153,24 @@ unit_label <- function(x) {
   as.character(sym)
 }
 
-#' @export
-format.substance <- function(x, ...) {
+## unit_label() over a character vector of unit strings.
+unit_labels <- function(x) {
+  vapply(x, function(z) {
+    tryCatch(unit_label(z), error = function(e) NA_character_)
+  }, character(1), USE.NAMES = FALSE)
+}
+
+## Shared by both classes: substance_unit() is the generic that abstracts where
+## the unit comes from, so one body covers a single unit and a per-element one.
+format_substance_like <- function(x, ...) {
   sub <- vctrs::field(x, "substance")
   sub[is.na(sub)] <- "?"
-  paste0(format(vctrs::field(x, "value"), ...), " [", unit_label(x), "] ", sub)
+  paste0(format(vctrs::field(x, "value"), ...), " [",
+         as.character(substance_unit(x)), "] ", sub)
 }
+
+#' @export
+format.substance <- function(x, ...) format_substance_like(x, ...)
 
 #' @export
 vec_ptype_abbr.substance <- function(x, ...) "subst"

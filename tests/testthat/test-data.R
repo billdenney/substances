@@ -1,5 +1,16 @@
-## The registry is data, so it needs tests that data can fail. Each of these
-## corresponds to a way a hand-maintained conversion table goes wrong.
+## The registry is data, so it needs tests that data can fail.
+##
+## The structural rules -- units that parse, units that match their kind, unique
+## ids, unambiguous names, usable conversion rows -- are enforced by
+## validate_system() at registration, and are tested against a deliberately
+## broken registry in test-registry.R. That covers the shipped CSVs too: they
+## are loaded through substance_system() at package load, so a violation makes
+## library(substances) throw rather than reaching any assertion here.
+##
+## What is left for this file is what validate_system() cannot know: whether
+## the bundled values are the right values, and whether they meet the editorial
+## standard this registry sets for itself. A downstream registry is entitled to
+## different editorial rules, which is why these are not in validate_system().
 
 sys <- get_system("substances")
 
@@ -16,54 +27,6 @@ test_that("every source_id resolves, and every ok value has one", {
                                  collapse = ", ")))
   ok_conv <- sys$conversions[sys$conversions$status == "ok", ]
   expect_true(all(!is.na(ok_conv$source_id)))
-})
-
-test_that("every unit in the registry parses", {
-  for (u in unique(sys$parameters$unit))
-    expect_true(unit_is_defined(u), info = u)
-  for (u in unique(c(sys$conversions$from_unit, sys$conversions$to_unit)))
-    expect_true(unit_is_defined(u), info = u)
-})
-
-test_that("every parameter has the units its kind requires", {
-  for (i in seq_len(nrow(sys$parameters))) {
-    kind <- sys$parameters$parameter[i]
-    expect_true(
-      units::ud_are_convertible(sys$parameters$unit[i],
-                                substance_parameter_units[[kind]]),
-      info = paste(sys$parameters$substance_id[i], kind, sys$parameters$unit[i]))
-  }
-})
-
-test_that("referential integrity holds across the tables", {
-  ids <- sys$substances$substance_id
-  expect_setequal(setdiff(sys$parameters$substance_id, ids), character(0))
-  expect_setequal(setdiff(sys$synonyms$substance_id, ids), character(0))
-  expect_setequal(setdiff(sys$conversions$substance_id, ids), character(0))
-  expect_false(any(duplicated(ids)))
-  expect_false(any(duplicated(sys$parameters[, c("substance_id", "parameter")])))
-})
-
-test_that("no synonym claims two different substances", {
-  key <- tolower(sys$synonyms$synonym)
-  clash <- tapply(sys$synonyms$substance_id, key, function(z) length(unique(z)))
-  expect_true(all(clash == 1L),
-              info = paste("ambiguous synonyms:",
-                           paste(names(clash)[clash > 1L], collapse = ", ")))
-})
-
-test_that("no lookup key resolves to two different substances", {
-  # substance_id and name are often the same string for elements, which is fine;
-  # what must not happen is one key pointing at two different substances
-  keys <- data.frame(
-    key = tolower(c(sys$substances$substance_id, sys$substances$name,
-                    sys$synonyms$synonym)),
-    id = c(sys$substances$substance_id, sys$substances$substance_id,
-           sys$synonyms$substance_id))
-  clash <- tapply(keys$id, keys$key, function(z) length(unique(z)))
-  expect_true(all(clash == 1L),
-              info = paste("ambiguous keys:",
-                           paste(names(clash)[clash > 1L], collapse = ", ")))
 })
 
 test_that("every formula-derived molar mass recomputes from the atomic weights", {

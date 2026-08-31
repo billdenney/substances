@@ -35,7 +35,7 @@ units to be right.}
 in this system take precedence, and so do the parameter kinds it declares.}
 
 \item{overwrite}{Replace an already-registered system of the same name. A
-\code{substance} vector records only its system's name, so replacing a system
+\code{substances} vector records only its system's name, so replacing a system
 changes what every existing vector of that system means; registering over
 an existing name is an error unless this is \code{TRUE}.}
 }
@@ -45,7 +45,7 @@ A \code{substance_system} object, invisibly registered under \code{name}.
 \description{
 A system is an isolated set of substances and their conversions. Because the
 substance lives in R data rather than in the udunits database, several
-systems can coexist in one session without colliding, and a \link{substance}
+systems can coexist in one session without colliding, and a \link{substances}
 vector records the system it was created under so vectors from different
 systems cannot be combined.
 }
@@ -65,7 +65,8 @@ substance_system("example_pkg", inherit = "substances", parameters = data.frame(
   unit         = "g/mol",
   source_id    = "internal-spec"))
 
-set_units(substance(1, "mg/dL", "widgetol", system = "example_pkg"), "mmol/L")
+set_units(set_substances(1, "widgetol", "mg/dL", system = "example_pkg"),
+          "mmol/L")
 
 # a parameter kind of your own: enzyme mass to catalytic activity
 substance_system("example_enzymes",
@@ -77,6 +78,6 @@ substance_system("example_enzymes",
     unit         = "U/mg",
     source_id    = "supplier-certificate"))
 
-set_units(substance(1, "ug", "alkaline_phosphatase",
-                    system = "example_enzymes"), "U")
+set_units(set_substances(1, "alkaline_phosphatase", "ug",
+                         system = "example_enzymes"), "U")
 }

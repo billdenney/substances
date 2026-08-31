@@ -52,6 +52,7 @@ install_extra_units <- function() {
 # so they cannot be exercised from the test suite. install_extra_units() and
 # unit_is_defined() carry the logic and are tested directly.
 .onLoad <- function(libname, pkgname) {
+  register_all_s3_methods()
   # udunits is global process state, so record what we added and only remove
   # those on unload -- never a symbol the user or another package defined.
   assign("installed_units", install_extra_units(), envir = substances_env)

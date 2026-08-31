@@ -2,7 +2,6 @@
 % Please edit documentation in R/substances-package.R
 \docType{package}
 \name{substances-package}
-\alias{substances}
 \alias{substances-package}
 \title{substances: Substance-Aware Unit Conversions}
 \description{
@@ -18,17 +17,32 @@ in udunits relative to \code{mol} makes glucose and sodium mutually convertible,
 so \verb{1 mol_glucose + 1 mol_sodium} silently returns a number; defining them as
 base units instead keeps them apart but makes \code{mol} to \code{g} conversion
 impossible. Isolation and conversion are mutually exclusive inside udunits.
-So here the substance is a field of the vector, and the registry supplies the
-quantities that bridge dimensions \code{units} cannot relate on its own.
+So here the substance is an attribute of the vector, carried alongside the
+unit, and the registry supplies the quantities that bridge dimensions \code{units}
+cannot relate on its own.
 }
+\section{Object model}{
+
+A \link{substances} vector is a \link[units:units]{units::units} vector with one extra attribute:
+the substance of every element. Inheriting from \code{units} means every \code{units}
+method works, and the methods in this package -- \code{[}, \code{c()}, \code{rep()}, \code{Ops},
+\code{Summary} and the rest -- keep the substance aligned with the values.
+\code{\link[=substances]{substances()}} checks that alignment on every read, so an operation this
+package has not anticipated fails loudly instead of matching values to
+analytes at random.
+
+\code{vctrs} and \code{pillar} are supported but not required. Their methods are
+registered at load time when those packages are present, which is what lets
+\code{vec_slice()}, \code{vec_c()} and \code{dplyr::bind_rows()} carry the substance too.
+}
+
 \section{R version}{
 
 R >= 4.3.0 is required for \code{\link[=chooseOpsMethod]{chooseOpsMethod()}}, which is what lets a
-\code{substance} interoperate with a plain \link[units:units]{units::units} quantity. Without it R
-refuses to choose between the two classes' operator methods and
-\code{x * units::set_units(3, "L")} fails with "Incompatible methods". The only
-S3 arrangement that works without it is inheriting from \code{units}, which
-silently drops the substance.
+\code{substances} vector interoperate with a plain \link[units:units]{units::units} quantity.
+Without it R refuses to choose between the two classes' operator methods:
+\code{x * units::set_units(3, "L")} warns "Incompatible methods" and returns the
+values with \code{x}'s unit unchanged -- a wrong answer rather than an error.
 }
 
 \section{Out of scope}{

@@ -4,7 +4,7 @@
 \alias{set_units.mixed_substances}
 \title{Convert a mixed_substances vector to a single unit}
 \usage{
-\method{set_units}{mixed_substances}(x, value, ..., mode = units::units_options("set_units_mode"))
+\method{set_units}{mixed_substances}(x, value, ..., mode = mixed_set_units_mode())
 }
 \arguments{
 \item{x}{A \link{mixed_substances} vector.}
@@ -16,7 +16,7 @@
 \item{mode}{As in \code{\link[units:set_units]{units::set_units()}}.}
 }
 \value{
-A homogeneous \link{substance} vector.
+A homogeneous \link{substances} vector.
 }
 \description{
 Convert a mixed_substances vector to a single unit

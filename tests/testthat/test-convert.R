@@ -1,45 +1,45 @@
 test_that("dimensional conversions are delegated to units and need no substance", {
-  x <- substance(c(1, 2), "g/dL", c("albumin", NA))
+  x <- set_substances(c(1, 2), c("albumin", NA), "g/dL")
   y <- set_units(x, "g/L")
   expect_equal(as.numeric(y), c(10, 20))
   expect_equal(unit_label(y), "g/L")
-  expect_equal(substance_of(y), c("albumin", NA))
+  expect_equal(substances(y), c("albumin", NA))
 })
 
 test_that("molar mass bridges mass concentration to amount concentration", {
-  x <- substance(100, "mg/dL", "glucose")
+  x <- set_substances(100, "glucose", "mg/dL")
   expect_equal(as.numeric(set_units(x, "mmol/L")), 5.5507, tolerance = 1e-4)
   # and the same single parameter serves any other unit pair it can bridge
-  expect_equal(as.numeric(set_units(substance(1, "g", "glucose"), "mol")),
+  expect_equal(as.numeric(set_units(set_substances(1, "glucose", "g"), "mol")),
                1 / 180.156, tolerance = 1e-6)
-  expect_equal(as.numeric(set_units(substance(1, "mol", "glucose"), "g")),
+  expect_equal(as.numeric(set_units(set_substances(1, "glucose", "mol"), "g")),
                180.156, tolerance = 1e-6)
-  expect_equal(as.numeric(set_units(substance(1, "ug/L", "glucose"), "nmol/L")),
+  expect_equal(as.numeric(set_units(set_substances(1, "glucose", "ug/L"), "nmol/L")),
                1000 / 180.156, tolerance = 1e-6)
 })
 
 test_that("conversion is per-element, so one call handles a mixed vector", {
-  x <- substance(c(100, 140), "mg/dL", c("glucose", "sodium"))
+  x <- set_substances(c(100, 140), c("glucose", "sodium"), "mg/dL")
   y <- set_units(x, "mmol/L")
   expect_equal(as.numeric(y), c(5.5507, 60.897), tolerance = 1e-4)
-  expect_equal(substance_of(y), c("glucose", "sodium"))
+  expect_equal(substances(y), c("glucose", "sodium"))
 })
 
 test_that("two parameters compose: mg/dL to mEq/L needs molar mass and valence", {
-  expect_equal(as.numeric(set_units(substance(1, "mg/dL", "sodium"), "meq/L")),
+  expect_equal(as.numeric(set_units(set_substances(1, "sodium", "mg/dL"), "meq/L")),
                0.43498, tolerance = 1e-4)
-  expect_equal(as.numeric(set_units(substance(1, "mg/dL", "calcium"), "meq/L")),
+  expect_equal(as.numeric(set_units(set_substances(1, "calcium", "mg/dL"), "meq/L")),
                0.4990, tolerance = 1e-3)
 })
 
 test_that("activity, not molar mass, relates insulin mIU/L to pmol/L", {
-  expect_equal(as.numeric(set_units(substance(1, "mIU/L", "insulin"), "pmol/L")),
+  expect_equal(as.numeric(set_units(set_substances(1, "insulin", "mIU/L"), "pmol/L")),
                6.0, tolerance = 1e-6)
 })
 
 test_that("round trips return the input", {
   for (id in c("glucose", "cholesterol", "bilirubin", "creatinine")) {
-    x <- substance(100, "mg/dL", id)
+    x <- set_substances(100, id, "mg/dL")
     expect_equal(as.numeric(set_units(set_units(x, "mmol/L"), "mg/dL")), 100,
                  tolerance = 1e-9, info = id)
   }
@@ -48,26 +48,26 @@ test_that("round trips return the input", {
 test_that("an explicit affine conversion beats the dimensional path", {
   # % and mmol/mol are both dimensionless, so a units-first implementation
   # would convert HbA1c by a factor of 10 instead of by the master equation
-  x <- substance(c(5, 6.5, 7), "%", "hba1c")
+  x <- set_substances(c(5, 6.5, 7), "hba1c", "%")
   y <- set_units(x, "mmol/mol")
   expect_equal(as.numeric(y), c(31.132, 47.530, 52.995), tolerance = 1e-3)
   expect_false(isTRUE(all.equal(as.numeric(y), c(50, 65, 70))))
 })
 
 test_that("the affine conversion inverts exactly", {
-  x <- substance(c(31.132, 47.530, 52.995), "mmol/mol", "hba1c")
+  x <- set_substances(c(31.132, 47.530, 52.995), "hba1c", "mmol/mol")
   expect_equal(as.numeric(set_units(x, "%")), c(5, 6.5, 7), tolerance = 1e-4)
 })
 
 test_that("a disputed parameter is refused rather than guessed", {
-  x <- substance(50, "mg/dL", "lipoprotein_a")
+  x <- set_substances(50, "lipoprotein_a", "mg/dL")
   expect_error(set_units(x, "nmol/L"), "cannot convert", fixed = TRUE)
 })
 
 test_that("an impossible conversion names the substance and does not return", {
-  expect_error(set_units(substance(1, "mg/dL", "hba1c"), "mmol/L"),
+  expect_error(set_units(set_substances(1, "hba1c", "mg/dL"), "mmol/L"),
                "hba1c", fixed = TRUE)
-  expect_error(set_units(substance(1, "mg/dL", NA), "mmol/L"),
+  expect_error(set_units(set_substances(1, NA, "mg/dL"), "mmol/L"),
                "unknown substance", fixed = TRUE)
 })
 
@@ -94,7 +94,7 @@ test_that("published clinical factors are reproduced from the registry", {
     list("Sodium",            "mg/dL", "meq/L",  0.435))
   for (cs in cases) {
     # mode = "standard" because the unit comes from a variable, as in units
-    got <- as.numeric(set_units(substance(1, cs[[2]], cs[[1]]), cs[[3]],
+    got <- as.numeric(set_units(set_substances(1, cs[[1]], cs[[2]]), cs[[3]],
                                 mode = "standard"))
     # 5e-3 relative: these factors are published to three significant figures,
     # so 0.0259 for cholesterol is the rounding of the derived 0.0258622
@@ -110,7 +110,7 @@ test_that("ambiguous bridges error rather than picking one", {
 })
 
 test_that("`units<-` converts in place, like set_units()", {
-  x <- substance(100, "mg/dL", "glucose")
+  x <- set_substances(100, "glucose", "mg/dL")
   units(x) <- "mmol/L"
   expect_equal(as.numeric(x), 5.5507, tolerance = 1e-4)
   expect_equal(unit_label(x), "mmol/L")
@@ -118,16 +118,16 @@ test_that("`units<-` converts in place, like set_units()", {
 
 test_that("set_units() with no unit means unitless, as in units", {
   # dropping a real dimension is refused, exactly as units::set_units() does
-  expect_error(set_units(substance(1, "mg/dL", "glucose")),
+  expect_error(set_units(set_substances(1, "glucose", "mg/dL")),
                "cannot convert mg/dL to 1", fixed = TRUE)
   # but an already-unitless quantity is unchanged
-  x <- substance(1, units::unitless, "glucose")
+  x <- set_substances(1, "glucose", units::unitless)
   expect_equal(unit_label(set_units(x)), "1")
   expect_equal(as.numeric(set_units(x)), 1)
 })
 
 test_that("converting to the same unit is a no-op", {
-  x <- substance(100, "mg/dL", "glucose")
+  x <- set_substances(100, "glucose", "mg/dL")
   expect_equal(as.numeric(set_units(x, "mg/dL")), 100)
   expect_true(substance_convertible("mg/dL", "mg/dL", "glucose"))
 })
@@ -139,7 +139,7 @@ test_that("a conversion marked other than ok is refused with its note", {
                              to_unit = "nmol/L", kind = "factor", slope = 2,
                              intercept = NA, status = "disputed",
                              source_id = NA, note = "isoform size varies"))
-  x <- substance(1, "mg/dL", "x", system = "disputed_sys")
+  x <- set_substances(1, "x", "mg/dL", system = "disputed_sys")
   expect_error(set_units(x, "nmol/L"), "is marked \"disputed\"", fixed = TRUE)
   expect_error(set_units(x, "nmol/L"), "isoform size varies", fixed = TRUE)
 })
@@ -164,19 +164,19 @@ test_that("a plain factor conversion applies in both directions", {
                              to_unit = "nmol/L", kind = "factor", slope = 4,
                              intercept = NA, status = "ok", source_id = NA,
                              note = NA))
-  fwd <- substance(2, "mg/dL", "x", system = "factor_sys")
+  fwd <- set_substances(2, "x", "mg/dL", system = "factor_sys")
   expect_equal(as.numeric(set_units(fwd, "nmol/L")), 8)
-  rev <- substance(8, "nmol/L", "x", system = "factor_sys")
+  rev <- set_substances(8, "x", "nmol/L", system = "factor_sys")
   expect_equal(as.numeric(set_units(rev, "mg/dL")), 2)
 })
 
 test_that("a vector mixing convertible and unconvertible substances errors", {
-  x <- substance(c(1, 1), "mg/dL", c("glucose", "hba1c"))
+  x <- set_substances(c(1, 1), c("glucose", "hba1c"), "mg/dL")
   expect_error(set_units(x, "mmol/L"), "hba1c", fixed = TRUE)
 })
 
 test_that("set_units() accepts a unit held in a variable", {
-  x <- substance(100, "mg/dL", "glucose")
+  x <- set_substances(100, "glucose", "mg/dL")
   target <- "mmol/L"
   expect_equal(as.numeric(set_units(x, target, mode = "standard")),
                5.5507, tolerance = 1e-4)
@@ -185,11 +185,11 @@ test_that("set_units() accepts a unit held in a variable", {
 test_that("the default symbols mode accepts a bare unit expression", {
   # set_units(x, mmol/L) without quotes is the units-package idiom and the
   # default mode, so it needs to work here too
-  x <- substance(100, "mg/dL", "glucose")
+  x <- set_substances(100, "glucose", "mg/dL")
   expect_equal(as.numeric(set_units(x, mmol/L)), 5.5507, tolerance = 1e-4)
   expect_equal(unit_label(set_units(x, mmol/L)), "mmol/L")
 
-  y <- substance(1, "g", "glucose")
+  y <- set_substances(1, "glucose", "g")
   expect_equal(as.numeric(set_units(y, mol)), 1 / 180.156, tolerance = 1e-6)
 })
 
@@ -218,7 +218,7 @@ test_that("published factors for the wider clinical set are reproduced", {
     list("Folate",       "ng/mL", "nmol/L", 2.266),
     list("Ethanol",      "mg/dL", "mmol/L", 0.2171))
   for (cs in cases) {
-    got <- as.numeric(set_units(substance(1, cs[[2]], cs[[1]]), cs[[3]],
+    got <- as.numeric(set_units(set_substances(1, cs[[1]], cs[[2]]), cs[[3]],
                                 mode = "standard"))
     expect_equal(got, cs[[4]], tolerance = 5e-3,
                  info = paste(cs[[1]], cs[[2]], "->", cs[[3]]))
@@ -234,21 +234,21 @@ test_that("substance_convertible() refuses what set_units() would throw on", {
                              status = "disputed", note = "not settled"))
   expect_false(substance_convertible("mg/dL", "nmol/L", "x",
                                      system = "conv_disputed"))
-  expect_error(set_units(substance(1, "mg/dL", "x", system = "conv_disputed"),
+  expect_error(set_units(set_substances(1, "x", "mg/dL", system = "conv_disputed"),
                          "nmol/L"),
                "is marked \"disputed\"", fixed = TRUE)
 })
 
 test_that("a failed conversion quotes the withheld parameter and its reason", {
   # the registry has a great deal to say about Lp(a); it used to say none of it
-  err <- tryCatch(set_units(substance(50, "mg/dL", "Lp(a)"), "nmol/L"),
+  err <- tryCatch(set_units(set_substances(50, "Lp(a)", "mg/dL"), "nmol/L"),
                   error = conditionMessage)
   expect_match(err, "withholds a parameter", fixed = TRUE)
   expect_match(err, "disputed", fixed = TRUE)
   expect_match(err, "isoform size varies", fixed = TRUE)
 
   # and a substance the registry simply lacks says only that
-  err2 <- tryCatch(set_units(substance(1, "mg/dL", "hba1c"), "mmol/L"),
+  err2 <- tryCatch(set_units(set_substances(1, "hba1c", "mg/dL"), "mmol/L"),
                    error = conditionMessage)
   expect_false(grepl("withholds a parameter", err2, fixed = TRUE))
 })

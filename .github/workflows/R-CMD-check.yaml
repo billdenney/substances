@@ -48,3 +48,43 @@ jobs:
           # problems and manufactures false confidence.
           error-on: '"note"'
           upload-snapshots: true
+
+  # vctrs and pillar are Suggests, and their tests skip when they are absent --
+  # which means the suite alone cannot tell whether the package still *works*
+  # without them. This job installs Depends/Imports only, so "soft dependency"
+  # is checked rather than asserted.
+  hard-deps-only:
+    runs-on: ubuntu-latest
+    name: hard dependencies only
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          dependencies: '"hard"'
+          extra-packages: any::testthat, any::rcmdcheck
+
+      - name: Confirm vctrs and pillar really are absent
+        run: |
+          for (p in c("vctrs", "pillar")) {
+            if (requireNamespace(p, quietly = TRUE)) {
+              stop(p, " is installed, so this job proves nothing")
+            }
+          }
+        shell: Rscript {0}
+
+      - uses: r-lib/actions/check-r-package@v2
+        with:
+          # knitr and rmarkdown are Suggests too, so the vignette cannot build
+          # here; everything else is checked as usual.
+          build_args: '"--no-build-vignettes"'
+          args: '"--no-manual", "--ignore-vignettes", "--no-build-vignettes"'
+          error-on: '"note"'

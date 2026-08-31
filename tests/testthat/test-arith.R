@@ -1,103 +1,106 @@
 test_that("same-substance addition and subtraction work", {
-  x <- substance(c(1, 2), "mmol/L", "glucose")
-  y <- substance(c(3, 4), "mmol/L", "glucose")
+  x <- set_substances(c(1, 2), "glucose", "mmol/L")
+  y <- set_substances(c(3, 4), "glucose", "mmol/L")
   expect_equal(as.numeric(x + y), c(4, 6))
   expect_equal(as.numeric(y - x), c(2, 2))
-  expect_equal(substance_of(x + y), c("glucose", "glucose"))
+  expect_equal(substances(x + y), c("glucose", "glucose"))
 })
 
 test_that("adding different substances is an error", {
-  x <- substance(1, "mmol/L", "glucose")
-  y <- substance(1, "mmol/L", "sodium")
+  x <- set_substances(1, "glucose", "mmol/L")
+  y <- set_substances(1, "sodium", "mmol/L")
   expect_error(x + y, "different substances", fixed = TRUE)
 })
 
 test_that("addition converts the right-hand side, substance-aware", {
-  x <- substance(1, "mmol/L", "glucose")
-  y <- substance(18.0156, "mg/dL", "glucose")   # = 1 mmol/L
+  x <- set_substances(1, "glucose", "mmol/L")
+  y <- set_substances(18.0156, "glucose", "mg/dL")   # = 1 mmol/L
   expect_equal(as.numeric(x + y), 2, tolerance = 1e-4)
   expect_equal(unit_label(x + y), "mmol/L")
 })
 
 test_that("an unknown substance cannot be added", {
-  x <- substance(1, "mmol/L", NA)
+  x <- set_substances(1, NA, "mmol/L")
   expect_error(x + x, "substance is unknown", fixed = TRUE)
 })
 
 test_that("multiplication by a bare number scales, and keeps the substance", {
-  x <- substance(c(1, 2), "mmol/L", c("glucose", "sodium"))
+  x <- set_substances(c(1, 2), c("glucose", "sodium"), "mmol/L")
   expect_equal(as.numeric(x * 2), c(2, 4))
   expect_equal(as.numeric(2 * x), c(2, 4))
   expect_equal(as.numeric(x / 2), c(0.5, 1))
-  expect_equal(substance_of(x * 2), c("glucose", "sodium"))
+  expect_equal(substances(x * 2), c("glucose", "sodium"))
 })
 
 test_that("adding a bare number is an error", {
-  expect_error(substance(1, "mmol/L", "glucose") + 1, "has no unit", fixed = TRUE)
+  expect_error(set_substances(1, "glucose", "mmol/L") + 1, "has no unit", fixed = TRUE)
 })
 
 test_that("multiplying by a units quantity carries the substance through", {
   # concentration times volume is an amount, still of the same substance
-  x <- substance(2, "mmol/L", "glucose")
+  x <- set_substances(2, "glucose", "mmol/L")
   y <- x * units::set_units(3, "L")
-  expect_s3_class(y, "substance")
-  expect_equal(substance_of(y), "glucose")
-  expect_equal(as.numeric(units::set_units(drop_substance(y), "mmol")), 6,
+  expect_s3_class(y, "substances")
+  expect_equal(substances(y), "glucose")
+  expect_equal(as.numeric(units::set_units(drop_substances(y), "mmol")), 6,
                tolerance = 1e-9)
 })
 
 test_that("multiplication works with the units quantity on either side", {
-  x <- substance(2, "mmol/L", "glucose")
+  x <- set_substances(2, "glucose", "mmol/L")
   vol <- units::set_units(3, "L")
   left <- x * vol
   right <- vol * x
-  expect_s3_class(right, "substance")
-  expect_equal(substance_of(right), "glucose")
-  expect_equal(as.numeric(units::set_units(drop_substance(right), "mmol")),
-               as.numeric(units::set_units(drop_substance(left), "mmol")),
+  expect_s3_class(right, "substances")
+  expect_equal(substances(right), "glucose")
+  expect_equal(as.numeric(units::set_units(drop_substances(right), "mmol")),
+               as.numeric(units::set_units(drop_substances(left), "mmol")),
                tolerance = 1e-9)
 })
 
 test_that("division by a units quantity works in both directions", {
-  x <- substance(6, "mmol/L", "glucose")
+  x <- set_substances(6, "glucose", "mmol/L")
   vol <- units::set_units(3, "L")
 
   a <- x / vol
-  expect_s3_class(a, "substance")
-  expect_equal(substance_of(a), "glucose")
+  expect_s3_class(a, "substances")
+  expect_equal(substances(a), "glucose")
   expect_equal(as.numeric(a), 2)
 
   b <- vol / x
-  expect_s3_class(b, "substance")
-  expect_equal(substance_of(b), "glucose")
+  expect_s3_class(b, "substances")
+  expect_equal(substances(b), "glucose")
   expect_equal(as.numeric(b), 0.5)
 })
 
 test_that("a units quantity recycles against a longer substance vector", {
-  x <- substance(c(1, 2, 3), "mmol/L", c("glucose", "sodium", "glucose"))
+  x <- set_substances(c(1, 2, 3), c("glucose", "sodium", "glucose"), "mmol/L")
   y <- x * units::set_units(2, "L")
   expect_length(y, 3L)
-  expect_equal(substance_of(y), c("glucose", "sodium", "glucose"))
+  expect_equal(substances(y), c("glucose", "sodium", "glucose"))
 })
 
 test_that("only `*` and `/` are defined against a bare units quantity", {
-  x <- substance(2, "mmol/L", "glucose")
-  expect_error(x + units::set_units(3, "mmol/L"), "only `*` and `/`",
-               fixed = TRUE)
-  expect_error(units::set_units(3, "mmol/L") - x, "only `*` and `/`",
-               fixed = TRUE)
+  x <- set_substances(2, "glucose", "mmol/L")
+  expect_error(x + units::set_units(3, "mmol/L"),
+               "cannot be added to or compared with", fixed = TRUE)
+  expect_error(units::set_units(3, "mmol/L") - x,
+               "cannot be added to or compared with", fixed = TRUE)
+  expect_error(x > units::set_units(3, "mmol/L"),
+               "cannot be added to or compared with", fixed = TRUE)
 })
 
 test_that("chooseOpsMethod is claimed only for units, not every conflict", {
-  x <- substance(2, "mmol/L", "glucose")
+  x <- set_substances(2, "glucose", "mmol/L")
   expect_true(chooseOpsMethod(x, units::set_units(1, "L")))
   expect_false(chooseOpsMethod(x, as.difftime(1, units = "secs")))
   expect_false(chooseOpsMethod(x, Sys.Date()))
 })
 
-test_that("adding vec_arith.units leaves ordinary units arithmetic intact", {
-  # We register a method on another package's class, so pin the behaviour that
-  # must not change: units-to-units arithmetic never reaches vec_arith at all.
+test_that("loading substances leaves ordinary units arithmetic intact", {
+  # chooseOpsMethod.substances() is consulted whenever R has to break an
+  # operator tie, so pin the behaviour that must not change: arithmetic between
+  # two plain units quantities never involves this package at all.
   L <- units::set_units(3, "L")
   expect_equal(as.numeric(L * units::set_units(2, "m")), 6)
   expect_equal(as.numeric(L + units::set_units(2, "L")), 5)
@@ -113,32 +116,32 @@ test_that("adding vec_arith.units leaves ordinary units arithmetic intact", {
 })
 
 test_that("dividing by the same substance cancels it", {
-  x <- substance(6, "mmol/L", "glucose")
-  y <- substance(2, "mmol/L", "glucose")
+  x <- set_substances(6, "glucose", "mmol/L")
+  y <- set_substances(2, "glucose", "mmol/L")
   z <- x / y
-  expect_false(inherits(z, "substance"))
+  expect_false(inherits(z, "substances"))
   expect_s3_class(z, "units")
   expect_equal(as.numeric(z), 3)
 })
 
 test_that("multiplying two substances is refused", {
-  x <- substance(1, "mmol/L", "glucose")
+  x <- set_substances(1, "glucose", "mmol/L")
   expect_error(x * x, "substance squared", fixed = TRUE)
 })
 
 test_that("unary minus works", {
-  x <- substance(c(1, -2), "mmol/L", "glucose")
+  x <- set_substances(c(1, -2), "glucose", "mmol/L")
   expect_equal(as.numeric(-x), c(-1, 2))
-  expect_equal(substance_of(-x), c("glucose", "glucose"))
+  expect_equal(substances(-x), c("glucose", "glucose"))
 })
 
 test_that("sum and mean require a single substance", {
-  x <- substance(c(1, 2, 3), "mmol/L", "glucose")
+  x <- set_substances(c(1, 2, 3), "glucose", "mmol/L")
   expect_equal(as.numeric(sum(x)), 6)
   expect_equal(as.numeric(mean(x)), 2)
-  expect_equal(substance_of(sum(x)), "glucose")
+  expect_equal(substances(sum(x)), "glucose")
 
-  y <- substance(c(1, 2), "mmol/L", c("glucose", "sodium"))
+  y <- set_substances(c(1, 2), c("glucose", "sodium"), "mmol/L")
   expect_error(sum(y), "2 substances", fixed = TRUE)
   expect_error(mean(y), "2 substances", fixed = TRUE)
 })
@@ -147,70 +150,76 @@ test_that("arithmetic across systems is refused", {
   substance_system("arith_iso",
                    substances = data.frame(substance_id = "glucose",
                                            name = "Glucose"))
-  x <- substance(1, "mmol/L", "glucose")
-  z <- substance(1, "mmol/L", "glucose", system = "arith_iso")
+  x <- set_substances(1, "glucose", "mmol/L")
+  z <- set_substances(1, "glucose", "mmol/L", system = "arith_iso")
   expect_error(x + z, "different systems", fixed = TRUE)
 })
 
 test_that("exponentiation is refused, because the parameters would not follow", {
-  x <- substance(2, "mmol/L", "glucose")
-  expect_error(x^2, "cannot raise a `substance` to a power", fixed = TRUE)
+  x <- set_substances(2, "glucose", "mmol/L")
+  expect_error(x^2, "cannot raise a `substances` vector to a power",
+               fixed = TRUE)
 })
 
 test_that("unary plus returns the vector unchanged", {
-  x <- substance(c(1, -2), "mmol/L", "glucose")
+  x <- set_substances(c(1, -2), "glucose", "mmol/L")
   expect_equal(as.numeric(+x), c(1, -2))
-  expect_equal(substance_of(+x), c("glucose", "glucose"))
+  expect_equal(substances(+x), c("glucose", "glucose"))
 })
 
 test_that("undefined operator combinations are refused", {
-  x <- substance(2, "mmol/L", "glucose")
-  # comparison goes through vec_compare(), so it fails at the type stage
-  expect_error(x > 1, class = "vctrs_error_incompatible_type")
-  expect_error(1 - x, "cannot use `-` on a bare number", fixed = TRUE)
-  expect_error(!x, class = "vctrs_error_incompatible_op")
+  x <- set_substances(2, "glucose", "mmol/L")
+  expect_error(x > 1, "a number has no unit", fixed = TRUE)
+  expect_error(1 - x, "a number has no unit", fixed = TRUE)
+  expect_error(!x, "cannot use unary `!`", fixed = TRUE)
+  expect_error(x %% x, "cannot use `%%`", fixed = TRUE)
+
+  # a mixed_substances vector has no single unit for the algebra to use
+  m <- mixed_substances(c(1, 2), c("mg/dL", "mmol/L"), "glucose")
+  expect_error(x * m, "and a mixed_substances", fixed = TRUE)
+  expect_error(x + m, "cannot use `+`", fixed = TRUE)
 })
 
 test_that("dividing different substances is refused", {
-  x <- substance(1, "mmol/L", "glucose")
-  y <- substance(1, "mmol/L", "sodium")
+  x <- set_substances(1, "glucose", "mmol/L")
+  y <- set_substances(1, "sodium", "mmol/L")
   expect_error(x / y, "different substances", fixed = TRUE)
 })
 
 test_that("subtraction converts the right-hand side too", {
-  x <- substance(2, "mmol/L", "glucose")
-  y <- substance(18.0156, "mg/dL", "glucose")   # = 1 mmol/L
+  x <- set_substances(2, "glucose", "mmol/L")
+  y <- set_substances(18.0156, "glucose", "mg/dL")   # = 1 mmol/L
   expect_equal(as.numeric(x - y), 1, tolerance = 1e-4)
 })
 
 test_that("addition reports a unit that cannot be reconciled", {
-  x <- substance(1, "mmol/L", "hba1c")
-  y <- substance(1, "mg/dL", "hba1c")
+  x <- set_substances(1, "hba1c", "mmol/L")
+  y <- set_substances(1, "hba1c", "mg/dL")
   expect_error(x + y, "cannot use `+` on", fixed = TRUE)
 })
 
-test_that("the MISSING method is reached only by unary operators", {
-  # vctrs passes its MISSING sentinel only from the unary forms, so the method
-  # needs no arity check; this pins that, since the whole branch depends on it
-  x <- substance(c(1, -2), "mmol/L", "glucose")
+test_that("the unary branch is reached only by unary operators", {
+  # `Ops` signals the unary forms by leaving e2 missing, and the branch that
+  # negates x depends on that, so pin it: a binary minus must not land there
+  x <- set_substances(c(1, -2), "glucose", "mmol/L")
   expect_equal(as.numeric(-x), c(-1, 2))          # unary reaches it
   expect_equal(as.numeric(+x), c(1, -2))
 
-  # binary minus goes elsewhere: if it reached MISSING it would negate x and
-  # ignore y entirely
-  y <- substance(c(1, 1), "mmol/L", "glucose")
+  # binary minus goes elsewhere: if it reached the unary branch it would negate
+  # x and ignore y entirely
+  y <- set_substances(c(1, 1), "glucose", "mmol/L")
   expect_equal(as.numeric(x - y), c(0, -3))
-  # even the refused binary form lands in .numeric, not MISSING: it reports the
-  # bare number rather than silently returning -x
+  # even the refused binary form stays binary: it reports the bare number
+  # rather than silently returning -x
   expect_error(x - 1, "has no unit", fixed = TRUE)
 
   # and a unary operator we do not define still errors
-  expect_error(!x, class = "vctrs_error_incompatible_op")
+  expect_error(!x, "cannot use unary `!`", fixed = TRUE)
 })
 
 test_that("sum and mean refuse an unknown substance, as `+` does", {
   # these used to na.omit the substance, so sum() succeeded where + errored
-  x <- substance(c(1, 2), "mmol/L", c("glucose", NA))
+  x <- set_substances(c(1, 2), c("glucose", NA), "mmol/L")
   expect_error(sum(x), "substance is unknown", fixed = TRUE)
   expect_error(mean(x), "substance is unknown", fixed = TRUE)
   expect_error(x + x, "substance is unknown", fixed = TRUE)

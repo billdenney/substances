@@ -50,7 +50,7 @@ substance_parameter_units <- c(
 #'
 #' A system is an isolated set of substances and their conversions. Because the
 #' substance lives in R data rather than in the udunits database, several
-#' systems can coexist in one session without colliding, and a [substance]
+#' systems can coexist in one session without colliding, and a [substances]
 #' vector records the system it was created under so vectors from different
 #' systems cannot be combined.
 #'
@@ -74,7 +74,7 @@ substance_parameter_units <- c(
 #' @param inherit Name of a system to inherit entries from, or `NULL`. Entries
 #'   in this system take precedence, and so do the parameter kinds it declares.
 #' @param overwrite Replace an already-registered system of the same name. A
-#'   `substance` vector records only its system's name, so replacing a system
+#'   `substances` vector records only its system's name, so replacing a system
 #'   changes what every existing vector of that system means; registering over
 #'   an existing name is an error unless this is `TRUE`.
 #'
@@ -89,7 +89,8 @@ substance_parameter_units <- c(
 #'   unit         = "g/mol",
 #'   source_id    = "internal-spec"))
 #'
-#' set_units(substance(1, "mg/dL", "widgetol", system = "example_pkg"), "mmol/L")
+#' set_units(set_substances(1, "widgetol", "mg/dL", system = "example_pkg"),
+#'           "mmol/L")
 #'
 #' # a parameter kind of your own: enzyme mass to catalytic activity
 #' substance_system("example_enzymes",
@@ -101,8 +102,8 @@ substance_parameter_units <- c(
 #'     unit         = "U/mg",
 #'     source_id    = "supplier-certificate"))
 #'
-#' set_units(substance(1, "ug", "alkaline_phosphatase",
-#'                     system = "example_enzymes"), "U")
+#' set_units(set_substances(1, "alkaline_phosphatase", "ug",
+#'                          system = "example_enzymes"), "U")
 #' @export
 substance_system <- function(name, substances = NULL, synonyms = NULL,
                              parameters = NULL, conversions = NULL,
@@ -112,7 +113,7 @@ substance_system <- function(name, substances = NULL, synonyms = NULL,
   systems <- get("systems", envir = substances_env)
   if (name %in% names(systems) && !isTRUE(overwrite)) {
     stop("a conversion system named '", name, "' is already registered.",
-         "\n  Re-registering it would change what every existing `substance` ",
+         "\n  Re-registering it would change what every existing `substances` ",
          "vector of that system means, since a vector records only the name.",
          "\n  Pass overwrite = TRUE if that is what you intend.", call. = FALSE)
   }

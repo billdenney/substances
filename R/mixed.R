@@ -3,13 +3,16 @@
 #' The long-format shape that laboratory data actually arrives in: one column of
 #' values, one of unit strings, one of analyte names, all varying by row. This
 #' is the entry point rather than an afterthought -- its purpose is to be
-#' converted to a homogeneous [substance] vector, which is where arithmetic
+#' converted to a homogeneous [substances] vector, which is where arithmetic
 #' happens.
 #'
 #' This mirrors [units::mixed_units] in intent. It differs in representation:
 #' `mixed_units` is a list of length-1 `units` objects, whereas this keeps the
-#' unit as a character field, which stays a flat vector for the long columns
-#' this class exists to serve.
+#' unit as a character attribute, which stays a flat vector for the long columns
+#' this class exists to serve. It does not inherit from `units`, because there
+#' is no one unit for it to inherit -- which is also why it defines no
+#' arithmetic: [units::set_units()] converts it to a single unit, and the
+#' `substances` vector that comes back is where the arithmetic happens.
 #'
 #' @param x A numeric vector.
 #' @param unit A character vector of units, recycled to the length of `x`.
@@ -30,38 +33,94 @@ mixed_substances <- function(x = double(), unit = character(),
                              substance = NA_character_, system = NULL) {
   system_obj <- get_system(system)
   x <- as.double(x)
-  unit <- vctrs::vec_recycle(as.character(unit), length(x), x_arg = "unit")
-  substance <- vctrs::vec_recycle(as.character(substance), length(x),
-                                  x_arg = "substance")
+  unit <- recycle_to(as.character(unit), length(x), "unit")
+  substance <- recycle_to(as.character(substance), length(x), "substance")
 
   check_units_defined(unit)
-  id <- resolve_or_stop(substance, system_obj)
+  new_mixed_substances(x, resolve_or_stop(substance, system_obj), unit,
+                       system_obj$name)
+}
 
-  vctrs::new_rcrd(list(value = x, substance = id, unit = unit),
-                  system = system_obj$name, class = "mixed_substances")
+## Only so that set_units.mixed_substances()'s signature fits in 80 columns
+## while keeping the default `units` itself uses.
+mixed_set_units_mode <- function() units::units_options("set_units_mode")
+
+new_mixed_substances <- function(x, substance_id, unit, system_name) {
+  structure(as.double(x), substance = substance_id, unit = unit,
+            system = system_name, class = "mixed_substances")
 }
 
 #' @export
-format.mixed_substances <- function(x, ...) format_substance_like(x, ...)
+substances.mixed_substances <- function(x) attr(x, "substance")
+
+## Per-element unit strings, the counterpart of the single `units` attribute a
+## homogeneous `substances` vector carries.
+#' @export
+substance_units.mixed_substances <- function(x) attr(x, "unit")
 
 #' @export
-vec_ptype_abbr.mixed_substances <- function(x, ...) "mxsub"
+format.mixed_substances <- function(x, ...) {
+  stats::setNames(format_substance_like(x, ...), names(x))
+}
 
 #' @export
-vec_ptype_full.mixed_substances <- function(x, ...) "mixed_substances"
+print.mixed_substances <- function(x, ...) {
+  cat("<mixed_substances[", length(x), "]>\n", sep = "")
+  print(stats::setNames(format_substance_like(x, ...), names(x)), quote = FALSE)
+  invisible(x)
+}
 
 #' @export
-substance_of.mixed_substances <- function(x) vctrs::field(x, "substance")
+as.double.mixed_substances <- function(x, ...) as.vector(unclass(x), "double")
 
-## Per-element unit strings, the counterpart of the single `unit` attribute a
-## homogeneous `substance` carries.
 #' @export
-substance_unit.mixed_substances <- function(x) vctrs::field(x, "unit")
+`[.mixed_substances` <- function(x, ...) {
+  new_mixed_substances(unclass(x)[...], substances(x)[...],
+                       substance_units(x)[...], substance_system_of(x))
+}
 
-## as.double(), not as.numeric(): as.numeric() dispatches through as.double(),
-## so an as.numeric method is never reached and the vctrs default errors.
 #' @export
-as.double.mixed_substances <- function(x, ...) vctrs::field(x, "value")
+`[[.mixed_substances` <- `[.mixed_substances`
+
+#' @export
+rep.mixed_substances <- function(x, ...) {
+  new_mixed_substances(rep(unclass(x), ...), rep(substances(x), ...),
+                       rep(substance_units(x), ...), substance_system_of(x))
+}
+
+#' @export
+c.mixed_substances <- function(..., recursive = FALSE) {
+  args <- lapply(list(...), as_mixed_substances)
+  systems <- unique(vapply(args, substance_system_of, character(1)))
+  if (length(systems) > 1L) {
+    stop("cannot combine `mixed_substances` from different systems: ",
+         paste0("'", systems, "'", collapse = " and "), call. = FALSE)
+  }
+  new_mixed_substances(unlist(lapply(args, unclass)),
+                       unlist(lapply(args, substances)),
+                       unlist(lapply(args, substance_units)), systems)
+}
+
+## A homogeneous vector is a mixed one whose units all happen to agree, so
+## widening in this direction loses nothing and lets c() mix the two classes.
+as_mixed_substances <- function(x) {
+  if (inherits(x, "mixed_substances")) {
+    return(x)
+  }
+  if (inherits(x, "substances")) {
+    return(new_mixed_substances(bare_values(x), substances(x),
+                                rep(as.character(units(x)), length(x)),
+                                substance_system_of(x)))
+  }
+  stop("cannot combine a `mixed_substances` vector with a ",
+       paste(class(x), collapse = "/"), ".", call. = FALSE)
+}
+
+#' @export
+mixed_units.substances <- function(x, values, ...) {
+  stopifnot(missing(values))
+  as_mixed_substances(x)
+}
 
 #' Convert a mixed_substances vector to a single unit
 #'
@@ -69,10 +128,10 @@ as.double.mixed_substances <- function(x, ...) vctrs::field(x, "value")
 #' @param value The target unit.
 #' @param ... Unused.
 #' @param mode As in [units::set_units()].
-#' @return A homogeneous [substance] vector.
+#' @return A homogeneous [substances] vector.
 #' @export
 set_units.mixed_substances <- function(x, value, ...,
-                                       mode = units::units_options("set_units_mode")) {
+                                       mode = mixed_set_units_mode()) {
   if (missing(value)) {
     stop("a target unit is required", call. = FALSE)
   } else if (mode == "symbols") {
@@ -83,40 +142,16 @@ set_units.mixed_substances <- function(x, value, ...,
   }
   to_sym <- as_symbolic_units(value)
   system <- substance_system_of(x)
-  values <- vctrs::field(x, "value")
-  ids <- vctrs::field(x, "substance")
-  units_chr <- vctrs::field(x, "unit")
+  values <- as.vector(unclass(x), "double")
+  ids <- substances(x)
+  units_chr <- substance_units(x)
 
   out <- numeric(length(values))
   for (u in unique(units_chr)) {
     rows <- units_chr == u
-    part <- new_substance(values[rows], ids[rows], as_symbolic_units(u), system)
-    out[rows] <- vctrs::field(convert_substance(part, to_sym), "value")
+    part <- new_substances(values[rows], ids[rows], as_symbolic_units(u),
+                           system)
+    out[rows] <- bare_values(convert_substance(part, to_sym))
   }
-  new_substance(out, ids, to_sym, system)
+  new_substances(out, ids, to_sym, system)
 }
-
-#' @export
-#' @method vec_ptype2 mixed_substances
-vec_ptype2.mixed_substances <- function(x, y, ...) {
-  UseMethod("vec_ptype2.mixed_substances", y)
-}
-
-#' @export
-#' @method vec_ptype2.mixed_substances mixed_substances
-vec_ptype2.mixed_substances.mixed_substances <- function(x, y, ...) {
-  if (!identical(substance_system_of(x), substance_system_of(y))) {
-    stop("cannot combine `mixed_substances` from different systems", call. = FALSE)
-  }
-  x
-}
-
-#' @export
-#' @method vec_cast mixed_substances
-vec_cast.mixed_substances <- function(x, to, ...) {
-  UseMethod("vec_cast.mixed_substances", x)
-}
-
-#' @export
-#' @method vec_cast.mixed_substances mixed_substances
-vec_cast.mixed_substances.mixed_substances <- function(x, to, ...) x

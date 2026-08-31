@@ -48,7 +48,7 @@ test_that("every substance with a molar mass round-trips mg/dL to mmol/L", {
                                         sys$parameters$status == "ok" &
                                         !is.na(sys$parameters$value)]
   for (id in have) {
-    x <- substance(100, "mg/dL", id)
+    x <- set_substances(100, id, "mg/dL")
     expect_equal(as.numeric(set_units(set_units(x, "mmol/L"), "mg/dL")), 100,
                  tolerance = 1e-9, info = id)
   }
@@ -84,7 +84,7 @@ test_that("the shipped registry can be rebuilt from the CSVs", {
   expect_equal(nrow(sys2$substances), nrow(sys$substances))
   expect_equal(nrow(sys2$parameters), nrow(sys$parameters))
   # and it is a usable system, not just a parsed one
-  expect_equal(as.numeric(set_units(substance(100, "mg/dL", "glucose",
+  expect_equal(as.numeric(set_units(set_substances(100, "glucose", "mg/dL",
                                               system = "rebuilt"), "mmol/L")),
                5.5507, tolerance = 1e-4)
 })
@@ -119,24 +119,24 @@ test_that("gases carry a molar volume, and it is ~22.4 L/mol for all of them", {
 
   for (id in c("helium", "neon", "argon", "dihydrogen", "dinitrogen",
                "dioxygen")) {
-    expect_equal(as.numeric(set_units(substance(1, "mol", id), "L")),
+    expect_equal(as.numeric(set_units(set_substances(1, id, "mol"), "L")),
                  22.4, tolerance = 5e-3, info = id)
   }
 })
 
 test_that("density and molar mass give the molar volume of a solid or liquid", {
-  expect_equal(as.numeric(set_units(substance(1, "mol", "sodium"), "cm^3")),
+  expect_equal(as.numeric(set_units(set_substances(1, "sodium", "mol"), "cm^3")),
                23.70, tolerance = 1e-2)
-  expect_equal(as.numeric(set_units(substance(1, "mol", "iron"), "cm^3")),
+  expect_equal(as.numeric(set_units(set_substances(1, "iron", "mol"), "cm^3")),
                7.09, tolerance = 1e-2)
-  expect_equal(as.numeric(set_units(substance(1, "mol", "gold"), "cm^3")),
+  expect_equal(as.numeric(set_units(set_substances(1, "gold", "mol"), "cm^3")),
                10.21, tolerance = 1e-2)
-  expect_equal(as.numeric(set_units(substance(1, "mol", "mercury"), "cm^3")),
+  expect_equal(as.numeric(set_units(set_substances(1, "mercury", "mol"), "cm^3")),
                14.82, tolerance = 1e-2)
 })
 
 test_that("density alone bridges mass and volume", {
-  expect_equal(as.numeric(set_units(substance(19.3, "g", "gold"), "cm^3")),
+  expect_equal(as.numeric(set_units(set_substances(19.3, "gold", "g"), "cm^3")),
                1, tolerance = 1e-2)
 })
 
@@ -145,7 +145,7 @@ test_that("the atoms of diatomic elements have no volume bridge of their own", {
   # H atoms answers a question nobody asked; the entry records why
   for (id in c("hydrogen", "nitrogen", "oxygen", "chlorine", "bromine",
                "iodine")) {
-    expect_error(set_units(substance(1, "mol", id), "L"),
+    expect_error(set_units(set_substances(1, id, "mol"), "L"),
                  "cannot convert", info = id)
     expect_null(substance_parameters(id)$density, info = id)
     expect_null(substance_parameters(id)$molar_volume, info = id)
@@ -171,11 +171,11 @@ test_that("BUN and urea are different substances, not synonyms", {
   # be wrong by a factor of 2.14
   expect_equal(substance_resolve("BUN"), "urea_nitrogen")
   expect_equal(substance_resolve("Urea"), "urea")
-  expect_equal(as.numeric(set_units(substance(1, "mg/dL", "BUN"), "mmol/L")),
+  expect_equal(as.numeric(set_units(set_substances(1, "BUN", "mg/dL"), "mmol/L")),
                0.357, tolerance = 1e-3)
-  expect_equal(as.numeric(set_units(substance(1, "mg/dL", "Urea"), "mmol/L")),
+  expect_equal(as.numeric(set_units(set_substances(1, "Urea", "mg/dL"), "mmol/L")),
                0.1665, tolerance = 1e-3)
-  expect_error(substance(1, "mmol/L", "BUN") + substance(1, "mmol/L", "urea"),
+  expect_error(set_substances(1, "BUN", "mmol/L") + set_substances(1, "urea", "mmol/L"),
                "different substances", fixed = TRUE)
 })
 
@@ -184,13 +184,13 @@ test_that("isomers share a molar mass but stay distinct substances", {
                    function(id) as.numeric(substance_parameters(id)$molar_mass),
                    numeric(1))
   expect_equal(unname(masses), rep(180.156, 3), tolerance = 1e-4)
-  expect_error(substance(1, "mmol/L", "glucose") +
-                 substance(1, "mmol/L", "galactose"),
+  expect_error(set_substances(1, "glucose", "mmol/L") +
+                 set_substances(1, "galactose", "mmol/L"),
                "different substances", fixed = TRUE)
 })
 
 test_that("a valence that needs an oxidation state is refused", {
   expect_equal(substance_parameters("iron")$valence, NULL)
-  expect_error(set_units(substance(1, "mg/dL", "iron"), "meq/L"),
+  expect_error(set_units(set_substances(1, "iron", "mg/dL"), "meq/L"),
                "cannot convert", fixed = TRUE)
 })

@@ -30,7 +30,7 @@ tryCatch(units::set_units(units::set_units(100, "mg/dL"), "mmol/L"),
 Attach the substance and it resolves:
 
 ```{r}
-set_units(substance(100, "mg/dL", "glucose"), "mmol/L")
+set_units(set_substances(100, "glucose", "mg/dL"), "mmol/L")
 ```
 
 ## Why the substance cannot live in the unit
@@ -73,13 +73,19 @@ supplies the quantities that bridge dimensions `units` cannot relate on its own.
 ## A different substance per element
 
 Long-format laboratory data has one analyte per row, so that is the ordinary
-case rather than an edge case. The substance is a field of the vector, and it
-survives subsetting, reordering and data-frame operations.
+case rather than an edge case. A `substances` vector is a `units` vector with
+one extra attribute -- the substance of every element -- so everything `units`
+can do it can do, and the substance survives subsetting, reordering and
+data-frame operations.
 
 ```{r}
-x <- substance(c(100, 140, 90), "mg/dL", c("glucose", "sodium", "glucose"))
+class(set_substances(1, "glucose", "mg/dL"))
+```
+
+```{r}
+x <- set_substances(c(100, 140, 90), c("glucose", "sodium", "glucose"), "mg/dL")
 x
-substance_of(x[2:3])
+substances(x[2:3])
 
 d <- data.frame(id = 1:3, result = x)
 d[d$id > 1, ]
@@ -94,13 +100,13 @@ set_units(x, "mmol/L")
 Quantities of different substances do not combine:
 
 ```{r}
-tryCatch(substance(1, "mmol/L", "glucose") + substance(1, "mmol/L", "sodium"),
+tryCatch(set_substances(1, "glucose", "mmol/L") + set_substances(1, "sodium", "mmol/L"),
          error = function(e) conditionMessage(e))
 ```
 
 When the unit varies by row too — which is how the data usually arrives — use
-`mixed_substances()`. Its job is to become a homogeneous `substance`, which is
-where arithmetic happens.
+`mixed_substances()`. Its job is to become a homogeneous `substances` vector,
+which is where arithmetic happens.
 
 ```{r}
 m <- mixed_substances(c(100, 5.5, 140),
@@ -118,15 +124,15 @@ units commensurable. One molar mass therefore serves every unit pair it can
 bridge, rather than needing a table row each:
 
 ```{r}
-set_units(substance(1, "g", "glucose"),     "mol")
-set_units(substance(1, "ug/L", "glucose"),  "nmol/L")
-set_units(substance(1, "mg/dL", "glucose"), "mmol/L")
+set_units(set_substances(1, "glucose", "g"),     "mol")
+set_units(set_substances(1, "glucose", "ug/L"),  "nmol/L")
+set_units(set_substances(1, "glucose", "mg/dL"), "mmol/L")
 ```
 
 Where `units` can already do the job, nothing here is involved at all:
 
 ```{r}
-set_units(substance(1, "mg/dL", "albumin"), "g/L")
+set_units(set_substances(1, "albumin", "mg/dL"), "g/L")
 ```
 
 ### Parameters compose
@@ -135,7 +141,7 @@ Sodium in mEq/L needs the molar mass *and* the valence, and the search finds
 both:
 
 ```{r}
-set_units(substance(1, "mg/dL", "sodium"), "meq/L")
+set_units(set_substances(1, "sodium", "mg/dL"), "meq/L")
 ```
 
 ### Volume: density for condensed phases, molar volume for gases
@@ -146,15 +152,15 @@ distinction is not cosmetic.
 For a **solid or liquid**, density links mass and volume directly:
 
 ```{r}
-set_units(substance(19.3, "g", "gold"), "cm^3")
+set_units(set_substances(19.3, "gold", "g"), "cm^3")
 ```
 
 and combining it with the atomic weight gives the molar volume, a two-parameter
 path:
 
 ```{r}
-set_units(substance(1, "mol", "gold"), "cm^3")
-set_units(substance(1, "mol", "mercury"), "cm^3")
+set_units(set_substances(1, "gold", "mol"), "cm^3")
+set_units(set_substances(1, "mercury", "mol"), "cm^3")
 ```
 
 For a **gas**, that route is the wrong one. Avogadro's law says a mole of any
@@ -163,10 +169,10 @@ from amount to volume is the molar volume, and it is very nearly not
 substance-specific at all:
 
 ```{r}
-set_units(substance(1, "mol", "helium"),     "L")
-set_units(substance(1, "mol", "neon"),       "L")
-set_units(substance(1, "mol", "dihydrogen"), "L")
-set_units(substance(1, "mol", "dinitrogen"), "L")
+set_units(set_substances(1, "helium", "mol"),     "L")
+set_units(set_substances(1, "neon", "mol"),       "L")
+set_units(set_substances(1, "dihydrogen", "mol"), "L")
+set_units(set_substances(1, "dinitrogen", "mol"), "L")
 ```
 
 Deriving volume from mass instead would make that look substance-specific, and
@@ -181,7 +187,7 @@ So the atomic entries of the diatomic elements carry no volume bridge, and say
 why:
 
 ```{r, error = TRUE}
-set_units(substance(1, "mol", "hydrogen"), "L")
+set_units(set_substances(1, "hydrogen", "mol"), "L")
 ```
 
 ```{r}
@@ -200,7 +206,7 @@ something you can put in a flask. H~2~ carries both bridges — molar mass as a
 molecule, molar volume as a gas:
 
 ```{r}
-h2 <- substance(1, "mol", "dihydrogen")
+h2 <- set_substances(1, "dihydrogen", "mol")
 
 set_units(h2, "g")   # molar mass, as a molecule
 set_units(h2, "L")   # molar volume, as a gas
@@ -210,7 +216,7 @@ while H carries only the atomic weight, which is what an elemental analysis
 reports:
 
 ```{r}
-set_units(substance(1, "mol", "hydrogen"), "g")
+set_units(set_substances(1, "hydrogen", "mol"), "g")
 ```
 
 Converting *between* the two — one mole of H~2~ contains two moles of H — is
@@ -219,7 +225,7 @@ convert CO~2~ to C, glucose to carbon, and reactants to products, and that is a
 different package. Quantities of different substances simply do not combine:
 
 ```{r, error = TRUE}
-substance(2, "mol", "carbon_dioxide") + substance(8, "mol", "water")
+set_substances(2, "carbon_dioxide", "mol") + set_substances(8, "water", "mol")
 ```
 
 If a project needs a particular relationship, it registers the substance it
@@ -232,7 +238,7 @@ insulin's mass. The registry records it as an `activity`, and insulin's molar
 mass — which it also has — plays no part:
 
 ```{r}
-set_units(substance(1, "mIU/L", "insulin"), "pmol/L")
+set_units(set_substances(1, "insulin", "mIU/L"), "pmol/L")
 ```
 
 ### Not everything is multiplicative
@@ -241,7 +247,7 @@ HbA1c is affine. It is stored in the direction NGSP publishes it, with the
 inverse derived rather than transcribed:
 
 ```{r}
-set_units(substance(c(6.5, 7.0), "%", "hba1c"), "mmol/mol")
+set_units(set_substances(c(6.5, 7.0), "hba1c", "%"), "mmol/mol")
 ```
 
 `%` and `mmol/mol` are both dimensionless, so `units` would happily convert
@@ -256,7 +262,7 @@ Three sugars share a formula and a molar mass, and are not interchangeable:
 vapply(c("glucose", "galactose", "fructose"),
        function(s) as.numeric(substance_parameters(s)$molar_mass), numeric(1))
 
-tryCatch(substance(1, "mmol/L", "glucose") + substance(1, "mmol/L", "galactose"),
+tryCatch(set_substances(1, "glucose", "mmol/L") + set_substances(1, "galactose", "mmol/L"),
          error = function(e) conditionMessage(e))
 ```
 
@@ -265,8 +271,8 @@ of urea. Treating "BUN" as another name for urea would apply urea's molar mass
 and be wrong by a factor of 2.14. They are different substances.
 
 ```{r}
-set_units(substance(1, "mg/dL", "BUN"),  "mmol/L")
-set_units(substance(1, "mg/dL", "urea"), "mmol/L")
+set_units(set_substances(1, "BUN", "mg/dL"),  "mmol/L")
+set_units(set_substances(1, "urea", "mg/dL"), "mmol/L")
 ```
 
 Names and synonyms resolve case-insensitively, so study-specific labels reach
@@ -290,7 +296,7 @@ rather than leaving it out — which reads as "not looked up yet" — or includi
 it, which reads as "fine".
 
 ```{r}
-tryCatch(set_units(substance(50, "mg/dL", "Lp(a)"), "nmol/L"),
+tryCatch(set_units(set_substances(50, "Lp(a)", "mg/dL"), "nmol/L"),
          error = function(e) conditionMessage(e))
 ```
 
@@ -317,18 +323,44 @@ two quantities of the same substance cancels it, leaving an ordinary `units`
 quantity:
 
 ```{r}
-conc <- substance(2, "mmol/L", "glucose")
+conc <- set_substances(2, "glucose", "mmol/L")
 conc * units::set_units(3, "L")
 
-substance(6, "mmol/L", "glucose") / substance(2, "mmol/L", "glucose")
+set_substances(6, "glucose", "mmol/L") / set_substances(2, "glucose", "mmol/L")
 ```
 
 This interoperation needs R >= 4.3.0, for `chooseOpsMethod()`. Below that R
-refuses to choose between the `substance` and `units` operator methods and the
-expression fails before either runs.
+cannot choose between the `substances` and `units` operator methods: it warns
+"Incompatible methods" and falls back to the internal default, which returns the
+values with the left operand's unit unchanged — so `2 mmol/L * 3 L` comes back
+as `6 mmol/L`. A wrong answer rather than an error is not something a package
+about not confusing quantities can ship, which is what settles the version
+requirement.
 
 Only `*` and `/` are defined against a bare `units` quantity: adding something
 with no substance to something with one is refused rather than guessed at.
+
+The rest of the vector interface is ordinary base R. The reductions — `sum()`,
+`mean()`, `median()`, `range()`, `diff()` — insist on a single substance,
+because collapsing several elements into one would otherwise average across
+analytes:
+
+```{r, error = TRUE}
+sum(set_substances(c(100, 140), "glucose", "mg/dL"))
+sum(set_substances(c(100, 140), c("glucose", "sodium"), "mg/dL"))
+```
+
+`unique()` needs no such rule, because it compares the value *and* the
+substance: 5 mmol/L of glucose is not 5 mmol/L of urea.
+
+```{r}
+unique(set_substances(c(5, 5, 5), c("glucose", "glucose", "urea"), "mmol/L"))
+```
+
+`vctrs` and `pillar` are supported but not required. Where they are installed,
+their methods are registered at load time, so `vec_slice()`, `vec_c()` and
+`dplyr::bind_rows()` carry the substance too; where they are not, everything
+above still works.
 
 ## Bringing your own substances
 
@@ -347,8 +379,8 @@ my_substances <- data.frame(
 substance_system("my_project", inherit = "substances",
                  parameters = my_substances)
 
-set_units(substance(1, "mg/dL", "widgetol", system = "my_project"), "mmol/L")
-set_units(substance(120, "g", "widgetol", system = "my_project"), "mL")
+set_units(set_substances(1, "widgetol", "mg/dL", system = "my_project"), "mmol/L")
+set_units(set_substances(120, "widgetol", "g", system = "my_project"), "mL")
 ```
 
 There is no identity table in that call. One is derived from the
@@ -363,7 +395,7 @@ untouched, and vectors from different systems refuse to combine, so one
 project's definitions cannot leak into another's session:
 
 ```{r, error = TRUE}
-substance(1, "mg/dL", "widgetol")
+set_substances(1, "widgetol", "mg/dL")
 ```
 
 Synonyms and conversions extend the same way: a `synonyms` data frame maps your
@@ -390,7 +422,7 @@ substance_system("enzymes", parameter_units = c(specific_activity = "U/mg"),
     unit         = "U/mg",
     source_id    = "supplier-certificate"))
 
-set_units(substance(1, "ug", "alkaline_phosphatase", system = "enzymes"), "U")
+set_units(set_substances(1, "alkaline_phosphatase", "ug", system = "enzymes"), "U")
 ```
 
 or a turnover number, which relates enzyme *amount* to activity:
@@ -404,7 +436,7 @@ substance_system("kinetics", parameter_units = c(turnover = "kat/mol"),
     unit         = "1/s",
     source_id    = "textbook"))
 
-set_units(substance(1, "nmol", "carbonic_anhydrase", system = "kinetics"),
+set_units(set_substances(1, "carbonic_anhydrase", "nmol", system = "kinetics"),
           "mmol/s")
 ```
 

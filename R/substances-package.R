@@ -11,16 +11,29 @@
 #' so `1 mol_glucose + 1 mol_sodium` silently returns a number; defining them as
 #' base units instead keeps them apart but makes `mol` to `g` conversion
 #' impossible. Isolation and conversion are mutually exclusive inside udunits.
-#' So here the substance is a field of the vector, and the registry supplies the
-#' quantities that bridge dimensions `units` cannot relate on its own.
+#' So here the substance is an attribute of the vector, carried alongside the
+#' unit, and the registry supplies the quantities that bridge dimensions `units`
+#' cannot relate on its own.
+#'
+#' @section Object model:
+#' A [substances] vector is a [units::units] vector with one extra attribute:
+#' the substance of every element. Inheriting from `units` means every `units`
+#' method works, and the methods in this package -- `[`, `c()`, `rep()`, `Ops`,
+#' `Summary` and the rest -- keep the substance aligned with the values.
+#' [substances()] checks that alignment on every read, so an operation this
+#' package has not anticipated fails loudly instead of matching values to
+#' analytes at random.
+#'
+#' `vctrs` and `pillar` are supported but not required. Their methods are
+#' registered at load time when those packages are present, which is what lets
+#' `vec_slice()`, `vec_c()` and `dplyr::bind_rows()` carry the substance too.
 #'
 #' @section R version:
 #' R >= 4.3.0 is required for [chooseOpsMethod()], which is what lets a
-#' `substance` interoperate with a plain [units::units] quantity. Without it R
-#' refuses to choose between the two classes' operator methods and
-#' `x * units::set_units(3, "L")` fails with "Incompatible methods". The only
-#' S3 arrangement that works without it is inheriting from `units`, which
-#' silently drops the substance.
+#' `substances` vector interoperate with a plain [units::units] quantity.
+#' Without it R refuses to choose between the two classes' operator methods:
+#' `x * units::set_units(3, "L")` warns "Incompatible methods" and returns the
+#' values with `x`'s unit unchanged -- a wrong answer rather than an error.
 #'
 #' @section Out of scope:
 #' Normalising unit *strings* (`ng/ml` versus `ng/mL`, `IU/L` versus `U/L`) is
@@ -30,11 +43,13 @@
 #' only conversions that need a property of the substance.
 "_PACKAGE"
 
-## vctrs generics are re-exported so methods dispatch without attaching vctrs.
-#' @importFrom vctrs vec_ptype2 vec_cast vec_arith vec_ptype_abbr vec_ptype_full
-#' @importFrom vctrs vec_arith_base obj_print_header vec_arith.numeric
-## `units()` and `units<-()` are base R generics; only set_units() comes from units.
-#' @importFrom units set_units
+## `units()` and `units<-()` are base R generics, so only these three need
+## importing from units. The stats and utils generics have to be imported too,
+## or registering methods for them fails at namespace load -- which only shows
+## up under R CMD check, since load_all() has them attached already.
+#' @importFrom units set_units mixed_units drop_units
+#' @importFrom stats median quantile weighted.mean
+#' @importFrom utils str
 NULL
 
 ## Re-exported so `library(substances)` alone is enough to convert; the

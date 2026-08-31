@@ -5,12 +5,12 @@ test_that("systems are isolated from one another", {
                             value = 100, unit = "g/mol", status = "ok",
                             source_id = NA, note = NA))
 
-  x <- substance(1, "mg/dL", "widgetol", system = "project_a")
+  x <- set_substances(1, "widgetol", "mg/dL", system = "project_a")
   expect_equal(as.numeric(set_units(x, "mmol/L")), 0.1, tolerance = 1e-9)
 
   # the custom substance does not leak into the default system
   expect_true(is.na(substance_resolve("widgetol")))
-  expect_error(substance(1, "mg/dL", "widgetol"), "unknown substance")
+  expect_error(set_substances(1, "widgetol", "mg/dL"), "unknown substance")
 
   # nor does the default leak into the custom one
   expect_true(is.na(substance_resolve("glucose", system = "project_a")))
@@ -160,14 +160,14 @@ test_that("a package can register substances from a parameters frame alone", {
     source_id    = "internal-spec"))
 
   expect_equal(substance_resolve("widgetol", system = "byo"), "widgetol")
-  expect_equal(as.numeric(set_units(substance(1, "mg/dL", "widgetol",
+  expect_equal(as.numeric(set_units(set_substances(1, "widgetol", "mg/dL",
                                               system = "byo"), "mmol/L")),
                0.1, tolerance = 1e-9)
-  expect_equal(as.numeric(set_units(substance(120, "g", "widgetol",
+  expect_equal(as.numeric(set_units(set_substances(120, "widgetol", "g",
                                               system = "byo"), "mL")),
                100, tolerance = 1e-9)
   # inherited entries still work alongside
-  expect_equal(as.numeric(set_units(substance(100, "mg/dL", "glucose",
+  expect_equal(as.numeric(set_units(set_substances(100, "glucose", "mg/dL",
                                               system = "byo"), "mmol/L")),
                5.5507, tolerance = 1e-4)
 })
@@ -207,7 +207,7 @@ test_that("synonyms and conversions extend without an identity table too", {
                              to_unit = "mmol/mol", kind = "affine", slope = 2,
                              intercept = 1, status = "ok", source_id = "spec",
                              note = NA))
-  expect_equal(as.numeric(set_units(substance(3, "%", "scoreish",
+  expect_equal(as.numeric(set_units(set_substances(3, "scoreish", "%",
                                               system = "byo_conv"),
                                     "mmol/mol")), 7)
 })
@@ -232,11 +232,11 @@ test_that("a system can declare parameter kinds of its own", {
       source_id    = "supplier-certificate"))
 
   # enzyme mass -> catalytic activity, via a kind the package never heard of
-  expect_equal(as.numeric(set_units(substance(1, "ug", "alkaline_phosphatase",
+  expect_equal(as.numeric(set_units(set_substances(1, "alkaline_phosphatase", "ug",
                                               system = "enzymes"), "U")),
                1, tolerance = 1e-9)
   # and back
-  expect_equal(as.numeric(set_units(substance(1, "U", "alkaline_phosphatase",
+  expect_equal(as.numeric(set_units(set_substances(1, "alkaline_phosphatase", "U",
                                               system = "enzymes"), "ug")),
                1, tolerance = 1e-9)
 })
@@ -250,14 +250,14 @@ test_that("a turnover number bridges enzyme amount and activity", {
       value        = 1e6,
       unit         = "1/s",
       source_id    = "textbook"))
-  expect_equal(as.numeric(set_units(substance(1, "nmol", "carbonic_anhydrase",
+  expect_equal(as.numeric(set_units(set_substances(1, "carbonic_anhydrase", "nmol",
                                               system = "kcat_demo"), "mmol/s")),
                1, tolerance = 1e-9)
 })
 
 test_that("WHO international units are already a supported kind", {
   # IU is a separate dimension and `activity` bridges it to amount
-  expect_equal(as.numeric(set_units(substance(1, "mIU/L", "insulin"), "pmol/L")),
+  expect_equal(as.numeric(set_units(set_substances(1, "insulin", "mIU/L"), "pmol/L")),
                6, tolerance = 1e-9)
   expect_equal(as.character(substance_parameter_units[["activity"]]), "mol/IU")
 })
@@ -266,7 +266,7 @@ test_that("a declared kind may also redefine a built-in one", {
   substance_system("odd_units", parameter_units = c(molar_mass = "kg/kmol"),
     parameters = data.frame(substance_id = "x", parameter = "molar_mass",
                             value = 100, unit = "kg/kmol", source_id = "spec"))
-  expect_equal(as.numeric(set_units(substance(1, "g", "x",
+  expect_equal(as.numeric(set_units(set_substances(1, "x", "g",
                                               system = "odd_units"), "mol")),
                0.01, tolerance = 1e-9)
 })
@@ -312,7 +312,7 @@ test_that("declared kinds are inherited along with the entries", {
   substance_system("enzymes_child", inherit = "enzymes")
   expect_true("specific_activity" %in%
                 names(get_system("enzymes_child")$parameter_units))
-  expect_equal(as.numeric(set_units(substance(1, "ug", "alkaline_phosphatase",
+  expect_equal(as.numeric(set_units(set_substances(1, "alkaline_phosphatase", "ug",
                                               system = "enzymes_child"), "U")),
                1, tolerance = 1e-9)
 })
@@ -361,7 +361,7 @@ test_that("a disputed conversion row may still carry an unsupported kind", {
 test_that("re-registering a system name is refused unless asked for", {
   substance_system("reg_once", parameters = data.frame(
     substance_id = "w", parameter = "molar_mass", value = 100, unit = "g/mol"))
-  v <- substance(1, "g", "w", system = "reg_once")
+  v <- set_substances(1, "w", "g", system = "reg_once")
   expect_equal(as.numeric(set_units(v, "mol")), 0.01)
 
   # a vector records only the name, so silently rewriting the system would
@@ -393,7 +393,7 @@ test_that("substance_load_default() reads whichever tables are present", {
     file.path(dir, "substance_parameters.csv"), row.names = FALSE, na = "")
 
   substance_load_default("csv_only", path = dir)
-  expect_equal(as.numeric(set_units(substance(1, "g", "w", system = "csv_only"),
+  expect_equal(as.numeric(set_units(set_substances(1, "w", "g", system = "csv_only"),
                                     "mol")), 0.01)
 
   expect_error(substance_load_default("csv_none", path = withr_tempdir()),

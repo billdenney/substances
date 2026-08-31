@@ -28,14 +28,17 @@ A \code{mixed_substances} vector.
 The long-format shape that laboratory data actually arrives in: one column of
 values, one of unit strings, one of analyte names, all varying by row. This
 is the entry point rather than an afterthought -- its purpose is to be
-converted to a homogeneous \link{substance} vector, which is where arithmetic
+converted to a homogeneous \link{substances} vector, which is where arithmetic
 happens.
 }
 \details{
 This mirrors \link[units:mixed_units]{units::mixed_units} in intent. It differs in representation:
 \code{mixed_units} is a list of length-1 \code{units} objects, whereas this keeps the
-unit as a character field, which stays a flat vector for the long columns
-this class exists to serve.
+unit as a character attribute, which stays a flat vector for the long columns
+this class exists to serve. It does not inherit from \code{units}, because there
+is no one unit for it to inherit -- which is also why it defines no
+arithmetic: \code{\link[units:set_units]{units::set_units()}} converts it to a single unit, and the
+\code{substances} vector that comes back is where the arithmetic happens.
 }
 \examples{
 m <- mixed_substances(c(100, 5.5, 140),

@@ -9,24 +9,29 @@ analyte's molar mass, and a unit string has nowhere to put one.
 ```r
 library(substances)
 
-x <- substance(c(100, 140, 5.5), "mg/dL", c("glucose", "sodium", "glucose"))
+x <- set_substances(c(100, 140, 5.5), c("glucose", "sodium", "glucose"), "mg/dL")
 x
-#> <substance<mg/dL>[3]>
-#> [1] 100 [mg/dL] glucose 140 [mg/dL] sodium  5.5 [mg/dL] glucose
+#> <substances[3]> mg/dL
+#> [1] 100.0 glucose 140.0 sodium    5.5 glucose
 
 set_units(x, "mmol/L")
-#> <substance<mmol/L>[3]>
-#> [1]  5.550745 [mmol/L] glucose 60.896653 [mmol/L] sodium
-#> [3]  0.305291 [mmol/L] glucose
+#> <substances[3]> mmol/L
+#> [1]  5.550745 glucose 60.896653 sodium   0.305291 glucose
 ```
 
 Each element converts by its own substance, in one call. Quantities of different
 substances do not mix:
 
 ```r
-substance(1, "mmol/L", "glucose") + substance(1, "mmol/L", "sodium")
+set_substances(1, "glucose", "mmol/L") + set_substances(1, "sodium", "mmol/L")
 #> Error: cannot use `+` on different substances: glucose and sodium
 ```
+
+A `substances` vector is a `units` vector with one extra attribute — the
+substance of every element — so everything `units` can do it can do, and the
+methods here keep the substance aligned with the values through `[`, `c()`,
+`rep()`, arithmetic and data-frame operations. `vctrs` and `pillar` are
+supported but not required.
 
 ## Why the substance cannot live in the unit
 
@@ -55,32 +60,32 @@ units commensurable. One molar mass therefore serves every unit pair it can
 bridge:
 
 ```r
-set_units(substance(1, "g", "glucose"),     "mol")     #> 0.005550745 [mol]
-set_units(substance(1, "ug/L", "glucose"),  "nmol/L")  #> 5.550745 [nmol/L]
-set_units(substance(1, "mg/dL", "glucose"), "mmol/L")  #> 0.05550745 [mmol/L]
+set_units(set_substances(1, "glucose", "g"),     "mol")     #> 0.005550745 glucose
+set_units(set_substances(1, "glucose", "ug/L"),  "nmol/L")  #> 5.550745 glucose
+set_units(set_substances(1, "glucose", "mg/dL"), "mmol/L")  #> 0.05550745 glucose
 ```
 
 Parameters compose. Sodium mg/dL to mEq/L needs molar mass *and* valence:
 
 ```r
-set_units(substance(1, "mg/dL", "sodium"), "meq/L")    #> 0.4349761 [meq/L]
+set_units(set_substances(1, "sodium", "mg/dL"), "meq/L")    #> 0.4349761 sodium
 ```
 
 Volume is bridged differently depending on the state, because the physics is
 different. A solid or liquid carries a density, linking mass and volume:
 
 ```r
-set_units(substance(19.3, "g", "gold"), "cm^3")     #> 1.000934 [cm^3] gold
-set_units(substance(1, "mol", "gold"), "cm^3")      #> 10.21505 [cm^3] gold
+set_units(set_substances(19.3, "gold", "g"), "cm^3")     #> 1.000934 gold
+set_units(set_substances(1, "gold", "mol"), "cm^3")      #> 10.21505 gold
 ```
 
 A gas carries a molar volume instead, since Avogadro's law makes volume
 proportional to amount rather than mass — so every gas lands on the same figure:
 
 ```r
-set_units(substance(1, "mol", "helium"), "L")       #> 22.42354 [L] helium
-set_units(substance(1, "mol", "neon"), "L")         #> 22.42409 [L] neon
-set_units(substance(1, "mol", "dihydrogen"), "L")   #> 22.42990 [L] dihydrogen
+set_units(set_substances(1, "helium", "mol"), "L")       #> 22.4235 helium
+set_units(set_substances(1, "neon", "mol"), "L")         #> 22.4244 neon
+set_units(set_substances(1, "dihydrogen", "mol"), "L")   #> 22.4299 dihydrogen
 ```
 
 Note `dihydrogen`, not `hydrogen`. A tabulated element density describes the
@@ -94,7 +99,7 @@ And the parameter is not always a molar mass. Insulin mU/L to pmol/L is fixed by
 the WHO activity standard, not by insulin's mass:
 
 ```r
-set_units(substance(1, "mIU/L", "insulin"), "pmol/L")  #> 6 [pmol/L]
+set_units(set_substances(1, "insulin", "mIU/L"), "pmol/L")  #> 6 insulin
 ```
 
 Some conversions are not multiplicative at all. HbA1c is affine, and is stored
@@ -102,8 +107,9 @@ in the direction NGSP publishes it, with the inverse derived rather than
 transcribed:
 
 ```r
-set_units(substance(c(6.5, 7), "%", "hba1c"), "mmol/mol")
-#> [1] 47.52951 [mmol/mol] hba1c  52.99519 [mmol/mol] hba1c
+set_units(set_substances(c(6.5, 7), "hba1c", "%"), "mmol/mol")
+#> <substances[2]> mmol/mol
+#> [1] 47.52951 hba1c 52.99519 hba1c
 ```
 
 Note that `%` and `mmol/mol` are both dimensionless, so a units-first
@@ -116,21 +122,34 @@ Concentration times volume is an amount, still of the same substance, and
 dividing two quantities of the same substance cancels it:
 
 ```r
-conc <- substance(2, "mmol/L", "glucose")
+conc <- set_substances(2, "glucose", "mmol/L")
 conc * units::set_units(3, "L")
-#> <substance<mmol>[1]>
-#> [1] 6 [mmol] glucose
+#> <substances[1]> mmol
+#> [1] 6 glucose
 
-substance(6, "mmol/L", "glucose") / substance(2, "mmol/L", "glucose")
+set_substances(6, "glucose", "mmol/L") / set_substances(2, "glucose", "mmol/L")
 #> 3 [1]
 ```
 
 Mixing quantities of a bare unit with a substance beyond `*` and `/` is refused,
-as is adding across substances.
+as is adding across substances. Reductions insist on a single substance, because
+collapsing several elements into one would otherwise average across analytes:
 
-This interoperation requires **R >= 4.3.0**, for `chooseOpsMethod()`. Below that,
-R will not choose between `substance` and `units` operator methods and the
-expression fails with "Incompatible methods" before any method here runs.
+```r
+sum(set_substances(c(100, 140), "glucose", "mg/dL"))
+#> <substances[1]> mg/dL
+#> [1] 240 glucose
+
+sum(set_substances(c(100, 140), c("glucose", "sodium"), "mg/dL"))
+#> Error: cannot take the sum of a `substances` vector holding 2 substances;
+#>   split by substance first.
+```
+
+Interoperating with a plain `units` quantity requires **R >= 4.3.0**, for
+`chooseOpsMethod()`. Below that R cannot choose between the `substances` and
+`units` operator methods: it warns "Incompatible methods" and falls back to the
+internal default, which returns `2 mmol/L * 3 L` as `6 mmol/L` — a wrong answer
+rather than an error.
 
 ## Every value has a citation
 
@@ -143,15 +162,20 @@ substance_info("LDL Cholesterol")
 #>   formula: C27H46O
 #>   parameters:
 #>     molar_mass  386.664  g/mol  [ok] Computed from the molecular formula and CIAAW 2021 atomic weights
+#>       C27H46O from CIAAW 2021 atomic weights
 
-set_units(substance(50, "mg/dL", "Lp(a)"), "nmol/L")
+set_units(set_substances(50, "Lp(a)", "mg/dL"), "nmol/L")
 #> Error: cannot convert mg/dL to nmol/L for: lipoprotein_a
+#>   `units` cannot relate these dimensions, and the registry has no parameter
+#>   or explicit conversion that bridges them.
+#>   The registry withholds a parameter that would have bridged them:
+#>     lipoprotein_a molar_mass [disputed] apo(a) isoform size varies between
+#>     individuals, so there is no valid fixed mass<->molar factor; measure
+#>     nmol/L directly
 ```
 
-Lp(a) has no molar mass in the registry because apo(a) isoform size varies
-between individuals, so there is no valid fixed mass-to-molar factor. Recording
-that as `disputed`, with a note, is different from leaving the row out — which
-would read as "not looked up yet".
+Recording that as `disputed`, with a note, is different from leaving the row
+out — which would read as "not looked up yet".
 
 Substance identity is the point, and it is not always obvious. Blood urea
 nitrogen is reported as the mass of *nitrogen*, so treating "BUN" as another
@@ -159,8 +183,8 @@ name for urea would apply urea's molar mass and be wrong by a factor of 2.14.
 They are registered as different substances:
 
 ```r
-set_units(substance(1, "mg/dL", "BUN"),  "mmol/L")   #> 0.3569644 [mmol/L] urea_nitrogen
-set_units(substance(1, "mg/dL", "urea"), "mmol/L")   #> 0.1665113 [mmol/L] urea
+set_units(set_substances(1, "BUN", "mg/dL"),  "mmol/L")   #> 0.3569644 urea_nitrogen
+set_units(set_substances(1, "urea", "mg/dL"), "mmol/L")   #> 0.1665113 urea
 ```
 
 Molar masses of ordinary molecules are computed from their formula rather than
@@ -187,10 +211,10 @@ substance_system("my_project", inherit = "substances", parameters = data.frame(
   unit         = c("g/mol", "g/mL"),
   source_id    = "internal-spec"))
 
-set_units(substance(1, "mg/dL", "widgetol", system = "my_project"), "mmol/L")
-#> [1] 0.1 [mmol/L] widgetol
-set_units(substance(120, "g", "widgetol", system = "my_project"), "mL")
-#> [1] 100 [mL] widgetol
+set_units(set_substances(1, "widgetol", "mg/dL", system = "my_project"), "mmol/L")
+#> [1] 0.1 widgetol
+set_units(set_substances(120, "widgetol", "g", system = "my_project"), "mL")
+#> [1] 100 widgetol
 ```
 
 Identity rows are derived from the `substance_id`s the parameters mention, so

@@ -149,8 +149,8 @@ convert_substance <- function(x, to) {
   }
 
   system <- get_system(substance_system_of(x))
-  values <- vctrs::field(x, "value")
-  ids <- vctrs::field(x, "substance")
+  values <- as.vector(bare_values(x), "double")
+  ids <- substances(x)
   dimensional <- tryCatch(units::ud_are_convertible(from, to),
                           error = function(e) FALSE)
   unresolved <- character(0)
@@ -199,7 +199,7 @@ convert_substance <- function(x, to) {
          "\n  See substance_info() for what is registered.", call. = FALSE)
   }
 
-  new_substance(values, ids, to_sym, substance_system_of(x))
+  new_substances(values, ids, to_sym, substance_system_of(x))
 }
 
 ## When a bridge is missing because a parameter was deliberately withheld, the
@@ -236,34 +236,23 @@ withheld_note <- function(ids, system) {
 #' Elements of different substances are converted independently, so a vector
 #' holding several analytes converts in one call.
 #'
-#' @param x A [substance] vector.
-#' @param value A unit, as in [units::set_units()].
-#' @param ... Passed to [units::as_units()].
-#' @param mode If `"symbols"` (the default, following `units`) `value` is taken
-#'   unevaluated; if `"standard"` it is evaluated.
+#' This is the replacement method behind `units(x) <- value`, which is what
+#' [units::set_units()] calls, so `set_units()` needs no method of its own: the
+#' one in `units` handles the unquoted-symbol form of `value` and then arrives
+#' here.
 #'
-#' @return A `substance` vector in the new unit.
+#' @param x A [substances] vector.
+#' @param value A unit, as in [units::set_units()].
+#'
+#' @return A `substances` vector in the new unit.
 #'
 #' @examples
-#' x <- substance(c(100, 140), "mg/dL", c("glucose", "sodium"))
+#' x <- set_substances(c(100, 140), c("glucose", "sodium"), "mg/dL")
 #' set_units(x, "mmol/L")
-#' @importFrom units set_units
+#' units(x) <- "mmol/L"
+#' x
 #' @export
-set_units.substance <- function(x, value, ...,
-                                mode = units::units_options("set_units_mode")) {
-  if (missing(value)) {
-    value <- units::unitless
-  } else if (mode == "symbols") {
-    value <- substitute(value)
-    if (is.name(value) || is.call(value)) {
-      value <- format(value)
-    }
-  }
-  convert_substance(x, value)
-}
-
-#' @export
-`units<-.substance` <- function(x, value) convert_substance(x, value)
+`units<-.substances` <- function(x, value) convert_substance(x, value)
 
 #' Can these units be converted for this substance?
 #'
